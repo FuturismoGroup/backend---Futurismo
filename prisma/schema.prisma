@@ -1,0 +1,1553 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model active_tours {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id        String              @unique @db.Uuid
+  guide_id              String?             @db.Uuid
+  status                String              @default("not_started") @db.VarChar(20)
+  current_stop_index    Int                 @default(0) @db.SmallInt
+  started_at            DateTime?           @db.Timestamptz(6)
+  ended_at              DateTime?           @db.Timestamptz(6)
+  last_location_update  DateTime?           @db.Timestamptz(6)
+  emergency_protocol_id String?             @db.Uuid
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  protocols             protocols?          @relation(fields: [emergency_protocol_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__emergency_protocol_id__protocols")
+  guides                guides?             @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__guide_id__guides")
+  reservations          reservations        @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__reservation_id__reservations")
+  guide_locations       guide_locations[]
+  monitoring_alerts     monitoring_alerts[]
+  tour_incidents        tour_incidents[]
+  tour_photos           tour_photos[]
+  tour_progress         tour_progress[]
+
+  @@index([emergency_protocol_id], map: "idx_active_tours__emergency_protocol_id")
+  @@index([guide_id], map: "idx_active_tours__guide_id")
+  @@index([status], map: "idx_active_tours__status")
+}
+
+model agencies {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String                   @unique(map: "agencies_user_id_unique") @db.Uuid
+  business_name          String                   @db.VarChar(200)
+  ruc                    String                   @unique(map: "agencies_ruc_unique") @db.VarChar(11)
+  position               String?                  @db.VarChar(100)
+  agency_phone           String?                  @db.VarChar(20)
+  agency_email           String?                  @db.VarChar(255)
+  agency_address         String?
+  agency_logo            String?
+  whatsapp               String?                  @db.VarChar(20)
+  status                 String                   @default("active") @db.VarChar(20)
+  level                  String                   @default("bronze") @db.VarChar(20)
+  verified               Boolean                  @default(false)
+  rating                 Decimal?                 @db.Decimal(3, 2)
+  total_reviews          Int                      @default(0)
+  total_tours            Int                      @default(0)
+  available_points       Int                      @default(0)
+  total_points           Int                      @default(0)
+  certifications         Json?                    @default("[]")
+  specialties            Json?                    @default("[]")
+  languages              Json?                    @default("[]")
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  contacts               Json?                    @default("[]")
+  payment_methods        Json?                    @default("[]")
+  users                  users                    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_agencies__user_id__users")
+  agency_payment_methods agency_payment_methods[]
+  guides                 guides[]
+  points_history         points_history[]
+  redemptions            redemptions[]
+  reservations           reservations[]
+  service_requests       service_requests[]
+
+  @@index([business_name], map: "idx_agencies__business_name")
+  @@index([level], map: "idx_agencies__level")
+  @@index([status], map: "idx_agencies__status")
+}
+
+model audit_logs {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String   @db.VarChar(50)
+  entity_type String   @db.VarChar(50)
+  entity_id   String?  @db.Uuid
+  old_values  Json?
+  new_values  Json?
+  ip_address  String?  @db.Inet
+  user_agent  String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users?   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_logs__user_id__users")
+
+  @@index([action], map: "idx_audit_logs__action")
+  @@index([created_at], map: "idx_audit_logs__created_at")
+  @@index([entity_id], map: "idx_audit_logs__entity_id")
+  @@index([entity_type], map: "idx_audit_logs__entity_type")
+  @@index([user_id], map: "idx_audit_logs__user_id")
+}
+
+model chat_participants {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chat_id      String    @db.Uuid
+  user_id      String    @db.Uuid
+  role         String    @default("member") @db.VarChar(20)
+  last_read_at DateTime? @db.Timestamptz(6)
+  unread_count Int       @default(0)
+  is_muted     Boolean   @default(false)
+  joined_at    DateTime  @default(now()) @db.Timestamptz(6)
+  left_at      DateTime? @db.Timestamptz(6)
+  chats        chats     @relation(fields: [chat_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_chat_participants__chat_id__chats")
+  users        users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_chat_participants__user_id__users")
+
+  @@unique([chat_id, user_id], map: "chat_participants_chat_user_key")
+  @@index([chat_id], map: "idx_chat_participants__chat_id")
+  @@index([user_id], map: "idx_chat_participants__user_id")
+}
+
+model chats {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String?             @db.VarChar(200)
+  chat_type         String              @default("direct") @db.VarChar(20)
+  is_from_agenda    Boolean             @default(false)
+  reservation_id    String?             @db.Uuid
+  last_message_at   DateTime?           @db.Timestamptz(6)
+  created_by        String              @db.Uuid
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  chat_participants chat_participants[]
+  users             users               @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_chats__created_by__users")
+  reservations      reservations?       @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_chats__reservation_id__reservations")
+  messages          messages[]
+
+  @@index([chat_type], map: "idx_chats__chat_type")
+  @@index([last_message_at], map: "idx_chats__last_message_at")
+  @@index([reservation_id], map: "idx_chats__reservation_id")
+}
+
+model documents {
+  id                                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                            String    @db.Uuid
+  document_type                      String    @db.VarChar(50)
+  name                               String    @db.VarChar(200)
+  file_url                           String
+  file_type                          String?   @db.VarChar(50)
+  file_size                          BigInt?
+  expiry_date                        DateTime? @db.Date
+  verification_status                String    @default("pending") @db.VarChar(20)
+  verified_by                        String?   @db.Uuid
+  verified_at                        DateTime? @db.Timestamptz(6)
+  created_at                         DateTime  @default(now()) @db.Timestamptz(6)
+  users_documents_user_idTousers     users     @relation("documents_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_documents__user_id__users")
+  users_documents_verified_byTousers users?    @relation("documents_verified_byTousers", fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_documents__verified_by__users")
+
+  @@index([document_type], map: "idx_documents__document_type")
+  @@index([expiry_date], map: "idx_documents__expiry_date")
+  @@index([user_id], map: "idx_documents__user_id")
+  @@index([verification_status], map: "idx_documents__verification_status")
+}
+
+model drivers {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  first_name       String             @db.VarChar(100)
+  last_name        String             @db.VarChar(100)
+  document_type    String             @default("DNI") @db.VarChar(10)
+  document_number  String             @unique @db.VarChar(20)
+  phone            String?            @db.VarChar(20)
+  email            String?            @db.VarChar(255)
+  license_number   String             @unique @db.VarChar(30)
+  license_category String             @db.VarChar(10)
+  license_expiry   DateTime?          @db.Date
+  photo_url        String?
+  status           String             @default("active") @db.VarChar(20)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  tour_assignments tour_assignments[]
+
+  @@index([first_name], map: "idx_drivers__first_name")
+  @@index([license_category], map: "idx_drivers__license_category")
+  @@index([license_expiry], map: "idx_drivers__license_expiry")
+  @@index([status], map: "idx_drivers__status")
+}
+
+model emergency_categories {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String      @unique @db.VarChar(100)
+  description    String?
+  icon           String?     @db.VarChar(50)
+  severity_level Int         @default(1) @db.SmallInt
+  is_active      Boolean     @default(true)
+  created_at     DateTime    @default(now()) @db.Timestamptz(6)
+  color          String?     @default("#EF4444") @db.VarChar(20)
+  protocols      protocols[]
+}
+
+model emergency_contact_types {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique @db.VarChar(100)
+  icon        String?   @default("📞") @db.VarChar(50)
+  description String?
+  color       String?   @default("#6B7280") @db.VarChar(20)
+  priority    Int?      @default(1) @db.SmallInt
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([is_active], map: "idx_emergency_contact_types__is_active")
+  @@index([name], map: "idx_emergency_contact_types__name")
+  @@index([priority], map: "idx_emergency_contact_types__priority")
+}
+
+model emergency_contacts {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String     @db.VarChar(200)
+  contact_type    String     @db.VarChar(30)
+  phone           String     @db.VarChar(20)
+  phone_secondary String?    @db.VarChar(20)
+  address         String?
+  location_id     String?    @db.Uuid
+  is_24_hours     Boolean    @default(false)
+  notes           String?
+  is_active       Boolean    @default(true)
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  locations       locations? @relation(fields: [location_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_emergency_contacts__location_id__locations")
+
+  @@index([contact_type], map: "idx_emergency_contacts__contact_type")
+  @@index([location_id], map: "idx_emergency_contacts__location_id")
+}
+
+model emergency_materials {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                     String                     @db.VarChar(200)
+  category                 String                     @db.VarChar(100)
+  description              String?
+  quantity                 Int?                       @default(1)
+  unit                     String?                    @default("unidad") @db.VarChar(50)
+  is_mandatory             Boolean?                   @default(false)
+  icon                     String?                    @default("📦") @db.VarChar(50)
+  notes                    String?
+  is_active                Boolean?                   @default(true)
+  created_at               DateTime?                  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                  @default(now()) @db.Timestamptz(6)
+  emergency_material_items emergency_material_items[]
+
+  @@index([category], map: "idx_emergency_materials__category")
+  @@index([is_active], map: "idx_emergency_materials__is_active")
+  @@index([is_mandatory], map: "idx_emergency_materials__is_mandatory")
+}
+
+model evaluation_criteria {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique @db.VarChar(50)
+  label       String   @db.VarChar(100)
+  description String?
+  order_index Int      @default(0) @db.SmallInt
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([is_active], map: "idx_evaluation_criteria__is_active")
+}
+
+model expense_categories {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String     @db.VarChar(100)
+  value       String     @unique @db.VarChar(50)
+  icon        String?    @db.VarChar(50)
+  color       String?    @db.VarChar(20)
+  description String?
+  is_active   Boolean    @default(true)
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  expenses    expenses[]
+
+  @@index([value], map: "idx_expense_categories__value")
+}
+
+model expenses {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id           String             @db.Uuid
+  category_id        String             @db.Uuid
+  tour_id            String?            @db.Uuid
+  reservation_id     String?            @db.Uuid
+  amount             Decimal            @db.Decimal(10, 2)
+  description        String?
+  date               DateTime           @db.Date
+  receipt_url        String?
+  notes              String?
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime           @default(now()) @db.Timestamptz(6)
+  expense_categories expense_categories @relation(fields: [category_id], references: [id])
+  guides             guides             @relation(fields: [guide_id], references: [id], onDelete: Cascade)
+  reservations       reservations?      @relation(fields: [reservation_id], references: [id])
+  tours              tours?             @relation(fields: [tour_id], references: [id])
+
+  @@index([category_id], map: "idx_expenses__category_id")
+  @@index([date], map: "idx_expenses__date")
+  @@index([guide_id], map: "idx_expenses__guide_id")
+  @@index([tour_id], map: "idx_expenses__tour_id")
+}
+
+model feedback {
+  id                                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                            String        @db.Uuid
+  feedback_type                      String        @db.VarChar(30)
+  subject                            String        @db.VarChar(200)
+  message                            String
+  status                             String        @default("pending") @db.VarChar(20)
+  priority                           String        @default("normal") @db.VarChar(10)
+  response                           String?
+  responded_by                       String?       @db.Uuid
+  responded_at                       DateTime?     @db.Timestamptz(6)
+  created_at                         DateTime      @default(now()) @db.Timestamptz(6)
+  rating                             Int?          @db.SmallInt
+  suggestions_text                   String?
+  users_feedback_responded_byTousers users?        @relation("feedback_responded_byTousers", fields: [responded_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_feedback__responded_by__users")
+  users_feedback_user_idTousers      users         @relation("feedback_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_feedback__user_id__users")
+  suggestions                        suggestions[]
+
+  @@index([created_at], map: "idx_feedback__created_at")
+  @@index([feedback_type], map: "idx_feedback__feedback_type")
+  @@index([status], map: "idx_feedback__status")
+  @@index([user_id], map: "idx_feedback__user_id")
+}
+
+model financial_calculations {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id           String   @db.Uuid
+  tour_price         Decimal  @db.Decimal(10, 2)
+  participants       Int
+  guide_commission   Decimal  @db.Decimal(5, 2)
+  estimated_expenses Decimal  @db.Decimal(10, 2)
+  gross_income       Decimal  @db.Decimal(10, 2)
+  net_income         Decimal  @db.Decimal(10, 2)
+  profit_margin      Decimal  @db.Decimal(5, 2)
+  notes              String?
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  guides             guides   @relation(fields: [guide_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at], map: "idx_financial_calculations__created_at")
+  @@index([guide_id], map: "idx_financial_calculations__guide_id")
+}
+
+model guide_locations {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active_tour_id String       @db.Uuid
+  latitude       Decimal      @db.Decimal(10, 7)
+  longitude      Decimal      @db.Decimal(10, 7)
+  accuracy       Decimal?     @db.Decimal(6, 2)
+  speed          Decimal?     @db.Decimal(6, 2)
+  recorded_at    DateTime     @default(now()) @db.Timestamptz(6)
+  active_tours   active_tours @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_guide_locations__active_tour_id__active_tours")
+
+  @@index([active_tour_id], map: "idx_guide_locations__active_tour_id")
+  @@index([recorded_at], map: "idx_guide_locations__recorded_at")
+}
+
+model guides {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String                   @unique(map: "guides_user_id_unique") @db.Uuid
+  agency_id              String?                  @db.Uuid
+  guide_type             String                   @default("FREELANCE") @db.VarChar(20)
+  license_number         String?                  @db.VarChar(50)
+  years_of_experience    Int?                     @default(0)
+  languages              Json?                    @default("[]")
+  specialties            Json?                    @default("[]")
+  certifications         Json?                    @default("[]")
+  museums                Json?                    @default("[]")
+  bio                    String?
+  education              String?
+  hourly_rate            Decimal?                 @db.Decimal(10, 2)
+  guide_photo            String?
+  rating                 Decimal?                 @db.Decimal(3, 2)
+  online                 Boolean                  @default(false)
+  bank_name              String?                  @db.VarChar(100)
+  account_type           String?                  @db.VarChar(20)
+  account_number         String?                  @db.VarChar(30)
+  interbank_code         String?                  @db.VarChar(30)
+  account_holder         String?                  @db.VarChar(200)
+  currency               String?                  @default("PEN") @db.VarChar(3)
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  status                 String?                  @default("active") @db.VarChar(20)
+  price_per_person       Decimal?                 @db.Decimal(10, 2)
+  work_zones             Json?                    @default("[]")
+  active_tours           active_tours[]
+  availability           availability[]
+  expenses               expenses[]
+  financial_calculations financial_calculations[]
+  guide_pricing          guide_pricing[]
+  agencies               agencies?                @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_guides__agency_id__agencies")
+  users                  users                    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_guides__user_id__users")
+  income                 income[]
+  personal_events        personal_events[]
+  reservations           reservations[]
+  reviews                reviews[]
+  service_requests       service_requests[]
+  staff_evaluations      staff_evaluations[]
+  tour_assignments       tour_assignments[]
+  user_favorites         user_favorites[]
+  working_hours          working_hours[]
+
+  @@index([guide_type], map: "idx_guides__guide_type")
+  @@index([agency_id], map: "idx_guides__agency_id")
+  @@index([languages], map: "idx_guides__languages", type: Gin)
+  @@index([specialties], map: "idx_guides__specialties", type: Gin)
+  @@index([status], map: "idx_guides__status")
+}
+
+model income {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id           String            @db.Uuid
+  type_id            String            @db.Uuid
+  tour_id            String?           @db.Uuid
+  reservation_id     String?           @db.Uuid
+  amount             Decimal           @db.Decimal(10, 2)
+  description        String?
+  date               DateTime          @db.Date
+  source             String?           @db.VarChar(100)
+  notes              String?
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  service_request_id String?           @db.Uuid
+  service_requests   service_requests? @relation(fields: [service_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_income__service_request_id__service_requests")
+  guides             guides            @relation(fields: [guide_id], references: [id], onDelete: Cascade)
+  reservations       reservations?     @relation(fields: [reservation_id], references: [id])
+  tours              tours?            @relation(fields: [tour_id], references: [id])
+  income_types       income_types      @relation(fields: [type_id], references: [id])
+
+  @@index([date], map: "idx_income__date")
+  @@index([guide_id], map: "idx_income__guide_id")
+  @@index([tour_id], map: "idx_income__tour_id")
+  @@index([type_id], map: "idx_income__type_id")
+  @@index([service_request_id], map: "idx_income__service_request_id")
+}
+
+model income_types {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(100)
+  value       String   @unique @db.VarChar(50)
+  icon        String?  @db.VarChar(50)
+  color       String?  @db.VarChar(20)
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  income      income[]
+
+  @@index([value], map: "idx_income_types__value")
+}
+
+model locations {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id          String?              @db.Uuid
+  name               String               @db.VarChar(150)
+  type               String               @db.VarChar(30)
+  code               String?              @db.VarChar(20)
+  latitude           Decimal?             @db.Decimal(10, 7)
+  longitude          Decimal?             @db.Decimal(10, 7)
+  is_active          Boolean              @default(true)
+  path               String?
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  emergency_contacts emergency_contacts[]
+  locations          locations?           @relation("locationsTolocations", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_locations__parent_id__locations")
+  other_locations    locations[]          @relation("locationsTolocations")
+  providers          providers[]
+
+  @@index([code], map: "idx_locations__code")
+  @@index([name], map: "idx_locations__name")
+  @@index([parent_id], map: "idx_locations__parent_id")
+  @@index([path], map: "idx_locations__path")
+  @@index([type], map: "idx_locations__type")
+}
+
+model messages {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chat_id        String     @db.Uuid
+  sender_id      String     @db.Uuid
+  content        String?
+  message_type   String     @default("text") @db.VarChar(20)
+  status         String     @default("sent") @db.VarChar(20)
+  reply_to_id    String?    @db.Uuid
+  edited_at      DateTime?  @db.Timestamptz(6)
+  deleted_at     DateTime?  @db.Timestamptz(6)
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  chats          chats      @relation(fields: [chat_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages__chat_id__chats")
+  messages       messages?  @relation("messagesTomessages", fields: [reply_to_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages__reply_to_id__messages")
+  other_messages messages[] @relation("messagesTomessages")
+  users          users      @relation(fields: [sender_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages__sender_id__users")
+
+  @@index([chat_id], map: "idx_messages__chat_id")
+  @@index([created_at], map: "idx_messages__created_at")
+  @@index([message_type], map: "idx_messages__message_type")
+  @@index([reply_to_id], map: "idx_messages__reply_to_id")
+  @@index([sender_id], map: "idx_messages__sender_id")
+}
+
+model notification_config {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email_enabled             Boolean  @default(true)
+  sms_enabled               Boolean  @default(false)
+  push_enabled              Boolean  @default(true)
+  whatsapp_enabled          Boolean  @default(false)
+  email_templates           Json?    @default("{}")
+  reminder_hours_before     Json?    @default("[24, 2]")
+  notify_on_new_reservation Boolean  @default(true)
+  notify_on_status_change   Boolean  @default(true)
+  notify_on_new_rating      Boolean  @default(true)
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model notification_settings {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @unique @db.Uuid
+  email_enabled     Boolean   @default(true)
+  push_enabled      Boolean   @default(true)
+  sms_enabled       Boolean   @default(false)
+  whatsapp_enabled  Boolean   @default(true)
+  muted_types       Json?     @default("[]")
+  quiet_hours_start DateTime? @db.Time(6)
+  quiet_hours_end   DateTime? @db.Time(6)
+  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notification_settings__user_id__users")
+}
+
+model notifications {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @db.Uuid
+  title             String    @db.VarChar(200)
+  message           String
+  notification_type String    @db.VarChar(30)
+  priority          String    @default("normal") @db.VarChar(10)
+  reference_type    String?   @db.VarChar(50)
+  reference_id      String?   @db.Uuid
+  action_url        String?
+  is_read           Boolean   @default(false)
+  read_at           DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notifications__user_id__users")
+
+  @@index([created_at], map: "idx_notifications__created_at")
+  @@index([is_read], map: "idx_notifications__is_read")
+  @@index([notification_type], map: "idx_notifications__notification_type")
+  @@index([priority], map: "idx_notifications__priority")
+  @@index([reference_id], map: "idx_notifications__reference_id")
+  @@index([user_id], map: "idx_notifications__user_id")
+}
+
+model payment_methods {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  code        String   @unique @db.VarChar(30)
+  description String?
+  icon        String?  @db.VarChar(50)
+  is_active   Boolean  @default(true)
+  sort_order  Int      @default(0) @db.SmallInt
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([code], map: "idx_payment_methods__code")
+  @@index([is_active], map: "idx_payment_methods__is_active")
+}
+
+model permissions {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String             @unique @db.VarChar(100)
+  code             String             @unique @db.VarChar(50)
+  description      String?
+  module           String             @db.VarChar(50)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  role_permissions role_permissions[]
+  user_permissions user_permissions[]
+
+  @@index([module], map: "idx_permissions__module")
+}
+
+model personal_events {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id            String             @db.Uuid
+  title               String             @db.VarChar(200)
+  description         String?
+  start_datetime      DateTime           @db.Timestamptz(6)
+  end_datetime        DateTime           @db.Timestamptz(6)
+  all_day             Boolean            @default(false)
+  event_type          String             @default("personal") @db.VarChar(50)
+  color               String?            @db.VarChar(20)
+  blocks_availability Boolean            @default(true)
+  recurrence_rule     Json?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  guides              guides             @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_personal_events__guide_id__guides")
+  service_requests    service_requests[]
+
+  @@index([end_datetime], map: "idx_personal_events__end_datetime")
+  @@index([event_type], map: "idx_personal_events__event_type")
+  @@index([guide_id], map: "idx_personal_events__guide_id")
+  @@index([start_datetime], map: "idx_personal_events__start_datetime")
+}
+
+model points_config {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  points_per_sol    Float    @default(1)
+  levels            Json?    @default("[{\"name\": \"Bronze\", \"minPoints\": 0}, {\"name\": \"Silver\", \"minPoints\": 1000}, {\"name\": \"Gold\", \"minPoints\": 5000}, {\"name\": \"Platinum\", \"minPoints\": 20000}]")
+  expiration_months Int      @default(12)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model points_history {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agency_id      String   @db.Uuid
+  type           String   @db.VarChar(20)
+  amount         Int
+  description    String?
+  reference_type String?  @db.VarChar(50)
+  reference_id   String?  @db.Uuid
+  created_by     String?  @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  agencies       agencies @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_points_history__agency_id__agencies")
+  users          users?   @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_points_history__created_by__users")
+
+  @@index([agency_id], map: "idx_points_history__agency_id")
+  @@index([created_at], map: "idx_points_history__created_at")
+  @@index([type], map: "idx_points_history__type")
+}
+
+model protocol_steps {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  protocol_id String    @db.Uuid
+  step_number Int       @db.SmallInt
+  title       String    @db.VarChar(200)
+  description String
+  is_critical Boolean   @default(false)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  protocols   protocols @relation(fields: [protocol_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_protocol_steps__protocol_id__protocols")
+
+  @@unique([protocol_id, step_number], map: "protocol_steps_protocol_step_key")
+  @@index([protocol_id], map: "idx_protocol_steps__protocol_id")
+}
+
+model protocols {
+  id                                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_id                        String               @db.Uuid
+  title                              String               @db.VarChar(200)
+  description                        String?
+  version                            String               @default("1.0") @db.VarChar(20)
+  status                             String               @default("draft") @db.VarChar(20)
+  created_by                         String               @db.Uuid
+  approved_by                        String?              @db.Uuid
+  approved_at                        DateTime?            @db.Timestamptz(6)
+  created_at                         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                         DateTime             @default(now()) @db.Timestamptz(6)
+  priority                           String?              @default("media") @db.VarChar(10)
+  icon                               String?              @default("🚨") @db.VarChar(10)
+  contacts                           String[]             @default([])
+  material_ids                       String[]             @default([]) @db.Uuid
+  active_tours                       active_tours[]
+  protocol_steps                     protocol_steps[]
+  users_protocols_approved_byTousers users?               @relation("protocols_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_protocols__approved_by__users")
+  emergency_categories               emergency_categories @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_protocols__category_id__emergency_categories")
+  users_protocols_created_byTousers  users                @relation("protocols_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_protocols__created_by__users")
+
+  @@index([category_id], map: "idx_protocols__category_id")
+  @@index([status], map: "idx_protocols__status")
+}
+
+model provider_categories {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String      @unique(map: "idx_provider_categories__name") @db.VarChar(100)
+  description String?
+  icon        String?     @db.VarChar(50)
+  color       String?     @db.VarChar(20)
+  is_active   Boolean     @default(true)
+  created_at  DateTime    @default(now()) @db.Timestamptz(6)
+  providers   providers[]
+}
+
+model provider_services {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider_id      String    @db.Uuid
+  name             String    @db.VarChar(200)
+  description      String?
+  service_type     String    @db.VarChar(50)
+  price            Decimal?  @db.Decimal(10, 2)
+  price_type       String?   @default("per_person") @db.VarChar(30)
+  duration_minutes Int?
+  max_capacity     Int?
+  is_active        Boolean   @default(true)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  providers        providers @relation(fields: [provider_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_provider_services__provider_id__providers")
+
+  @@index([provider_id], map: "idx_provider_services__provider_id")
+  @@index([service_type], map: "idx_provider_services__service_type")
+}
+
+model providers {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String              @db.VarChar(200)
+  category_id         String              @db.Uuid
+  location_id         String?             @db.Uuid
+  address             String?
+  phone               String?             @db.VarChar(20)
+  email               String?             @db.VarChar(255)
+  contact_name        String?             @db.VarChar(150)
+  rating              Decimal?            @db.Decimal(2, 1)
+  description         String?
+  logo_url            String?
+  capacity            Int?
+  price_type          String?             @db.VarChar(30)
+  base_price          Decimal?            @db.Decimal(10, 2)
+  currency            String              @default("USD") @db.VarChar(3)
+  status              String              @default("active") @db.VarChar(20)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
+  observations        String?
+  provider_categories provider_categories @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_providers__category_id__provider_categories")
+  locations           locations?          @relation(fields: [location_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_providers__location_id__locations")
+  provider_services   provider_services[]
+
+  @@index([category_id], map: "idx_providers__category_id")
+  @@index([location_id], map: "idx_providers__location_id")
+  @@index([name], map: "idx_providers__name")
+  @@index([status], map: "idx_providers__status")
+}
+
+model ratings {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id String       @unique @db.Uuid
+  rated_by_id    String       @db.Uuid
+  guide_rating   Int?         @db.SmallInt
+  driver_rating  Int?         @db.SmallInt
+  vehicle_rating Int?         @db.SmallInt
+  overall_rating Int          @db.SmallInt
+  comment        String?
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  users          users        @relation(fields: [rated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ratings__rated_by_id__users")
+  reservations   reservations @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ratings__reservation_id__reservations")
+
+  @@index([created_at], map: "idx_ratings__created_at")
+  @@index([overall_rating], map: "idx_ratings__overall_rating")
+  @@index([rated_by_id], map: "idx_ratings__rated_by_id")
+}
+
+model recommendation_options {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  value       String   @unique @db.VarChar(30)
+  label       String   @db.VarChar(100)
+  color       String?  @db.VarChar(20)
+  order_index Int      @default(0) @db.SmallInt
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([is_active], map: "idx_recommendation_options__is_active")
+}
+
+model redemptions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agency_id    String    @db.Uuid
+  reward_id    String    @db.Uuid
+  points_used  Int
+  status       String    @default("pending") @db.VarChar(20)
+  approved_by  String?   @db.Uuid
+  approved_at  DateTime? @db.Timestamptz(6)
+  delivered_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  agencies     agencies  @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_redemptions__agency_id__agencies")
+  users        users?    @relation(fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_redemptions__approved_by__users")
+  rewards      rewards   @relation(fields: [reward_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_redemptions__reward_id__rewards")
+
+  @@index([agency_id], map: "idx_redemptions__agency_id")
+  @@index([reward_id], map: "idx_redemptions__reward_id")
+  @@index([status], map: "idx_redemptions__status")
+}
+
+model reservation_config {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  min_advance_hours      Int      @default(24)
+  max_advance_days       Int      @default(90)
+  default_start_time     String   @default("08:00") @db.VarChar(10)
+  default_end_time       String   @default("18:00") @db.VarChar(10)
+  time_slot_interval     Int      @default(30) @db.SmallInt
+  allow_same_day_booking Boolean  @default(false)
+  require_confirmation   Boolean  @default(true)
+  auto_confirm_enabled   Boolean  @default(false)
+  cancellation_policy    Json?    @default("{\"hoursBeforeFree\": 48, \"penaltyPercentage\": 50}")
+  overbooking_allowed    Boolean  @default(false)
+  created_at             DateTime @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model reservations {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_id              String                 @db.Uuid
+  agency_id            String                 @db.Uuid
+  date                 DateTime               @db.Date
+  time                 DateTime               @db.Time(6)
+  adults               Int                    @default(1)
+  children             Int                    @default(0)
+  participants         Int                    @default(1)
+  pickup_location      String?
+  special_requirements String?
+  status               String                 @default("pending") @db.VarChar(20)
+  total_amount         Decimal                @default(0) @db.Decimal(10, 2)
+  payment_method       String?                @db.VarChar(50)
+  payment_status       String                 @default("pending") @db.VarChar(20)
+  billing_name         String?                @db.VarChar(200)
+  billing_document     String?                @db.VarChar(20)
+  billing_address      String?
+  points_awarded       Int?
+  guide_id             String?                @db.Uuid
+  notes                String?
+  created_by           String?                @db.Uuid
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  active_tours         active_tours?
+  chats                chats[]
+  expenses             expenses[]
+  income               income[]
+  ratings              ratings?
+  reservation_groups   reservation_groups[]
+  agencies             agencies               @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservations__agency_id__agencies")
+  users                users?                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservations__created_by__users")
+  guides               guides?                @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservations__guide_id__guides")
+  tours                tours                  @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservations__tour_id__tours")
+  service_area_ratings service_area_ratings[]
+  time_slots           time_slots[]
+  tour_assignments     tour_assignments?
+  tourist_ratings      tourist_ratings[]
+
+  @@index([agency_id], map: "idx_reservations__agency_id")
+  @@index([created_at], map: "idx_reservations__created_at")
+  @@index([date], map: "idx_reservations__date")
+  @@index([guide_id], map: "idx_reservations__guide_id")
+  @@index([status], map: "idx_reservations__status")
+  @@index([tour_id], map: "idx_reservations__tour_id")
+}
+
+model reservation_groups {
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id       String       @db.Uuid
+  representative_name  String       @db.VarChar(200)
+  representative_phone String       @db.VarChar(20)
+  adults_count         Int          @default(1)
+  children_count       Int          @default(0)
+  sort_order           Int          @default(0) @db.SmallInt
+  created_at           DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime     @default(now()) @db.Timestamptz(6)
+  reservations         reservations @relation(fields: [reservation_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_groups__reservation_id__reservations")
+
+  @@index([reservation_id], map: "idx_reservation_groups__reservation_id")
+}
+
+model reviews {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id           String            @db.Uuid
+  reviewer_id        String            @db.Uuid
+  service_request_id String?           @db.Uuid
+  rating             Int               @db.SmallInt
+  comment            String?
+  is_verified        Boolean           @default(false)
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  guides             guides            @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews__guide_id__guides")
+  users              users             @relation(fields: [reviewer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews__reviewer_id__users")
+  service_requests   service_requests? @relation(fields: [service_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews__service_request_id__service_requests")
+
+  @@index([created_at], map: "idx_reviews__created_at")
+  @@index([guide_id], map: "idx_reviews__guide_id")
+  @@index([rating], map: "idx_reviews__rating")
+  @@index([reviewer_id], map: "idx_reviews__reviewer_id")
+  @@index([service_request_id], map: "idx_reviews__service_request_id")
+}
+
+model reward_categories {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique(map: "idx_reward_categories__name") @db.VarChar(100)
+  description String?
+  active      Boolean   @default(true)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  color       String?   @db.VarChar(20)
+  icon        String?   @db.VarChar(50)
+  rewards     rewards[]
+}
+
+model rewards {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String             @db.VarChar(200)
+  description       String?
+  points            Int
+  stock             Int                @default(0)
+  category_id       String?            @db.Uuid
+  image             String?
+  active            Boolean            @default(true)
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+  redemptions       redemptions[]
+  reward_categories reward_categories? @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rewards__category_id__reward_categories")
+
+  @@index([active], map: "idx_rewards__active")
+  @@index([category_id], map: "idx_rewards__category_id")
+  @@index([name], map: "idx_rewards__name")
+  @@index([points], map: "idx_rewards__points")
+}
+
+model role_permissions {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  permission_id String      @db.Uuid
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  role_id       Int?
+  permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_role_permissions__permission_id__permissions")
+  roles         roles?      @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_role_permissions__role_id__roles")
+
+  @@index([permission_id], map: "idx_role_permissions__permission_id")
+}
+
+model roles {
+  name             String             @unique(map: "idx_roles__name") @db.VarChar(50)
+  display_name     String             @db.VarChar(100)
+  description      String?
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  role_id          Int                @id
+  role_permissions role_permissions[]
+  users            users[]
+}
+
+model service_area_ratings {
+  id                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id           String?       @db.Uuid
+  service_id               String?       @db.Uuid
+  rated_by_id              String        @db.Uuid
+  customer_service         Int           @default(0) @db.SmallInt
+  operations               Int           @default(0) @db.SmallInt
+  punctuality              Int           @default(0) @db.SmallInt
+  communication            Int           @default(0) @db.SmallInt
+  logistics                Int           @default(0) @db.SmallInt
+  safety                   Int           @default(0) @db.SmallInt
+  average_rating           Decimal       @db.Decimal(3, 2)
+  comment_customer_service String?
+  comment_operations       String?
+  comment_punctuality      String?
+  comment_communication    String?
+  comment_logistics        String?
+  comment_safety           String?
+  created_at               DateTime      @default(now()) @db.Timestamptz(6)
+  users                    users         @relation(fields: [rated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_service_area_ratings__rated_by_id__users")
+  reservations             reservations? @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_service_area_ratings__reservation_id__reservations")
+
+  @@index([average_rating], map: "idx_service_area_ratings__average_rating")
+  @@index([created_at], map: "idx_service_area_ratings__created_at")
+  @@index([rated_by_id], map: "idx_service_area_ratings__rated_by_id")
+  @@index([reservation_id], map: "idx_service_area_ratings__reservation_id")
+}
+
+model service_requests {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agency_id              String           @db.Uuid
+  guide_id               String           @db.Uuid
+  service_date           DateTime         @db.Date
+  start_time             DateTime?        @db.Time(6)
+  duration_hours         Int?             @db.SmallInt
+  group_size             Int?             @db.SmallInt
+  languages              Json?
+  message                String?
+  status                 String           @default("pending") @db.VarChar(20)
+  responded_at           DateTime?        @db.Timestamptz(6)
+  created_at             DateTime         @default(now()) @db.Timestamptz(6)
+  pricing_id             String?          @db.Uuid
+  total_price            Decimal?         @db.Decimal(10, 2)
+  price_per_person       Decimal?         @db.Decimal(10, 2)
+  location               String?          @db.VarChar(300)
+  special_requirements   String?
+  guide_response_message String?
+  calendar_event_id      String?          @db.Uuid
+  income                 income[]
+  reviews                reviews[]
+  agencies               agencies         @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_service_requests__agency_id__agencies")
+  guides                 guides           @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_service_requests__guide_id__guides")
+  personal_events        personal_events? @relation(fields: [calendar_event_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  guide_pricing          guide_pricing?   @relation(fields: [pricing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([agency_id], map: "idx_service_requests__agency_id")
+  @@index([created_at], map: "idx_service_requests__created_at")
+  @@index([guide_id], map: "idx_service_requests__guide_id")
+  @@index([service_date], map: "idx_service_requests__service_date")
+  @@index([status], map: "idx_service_requests__status")
+}
+
+model settings {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique @db.VarChar(100)
+  value       Json?
+  category    String   @default("general") @db.VarChar(50)
+  description String?
+  is_public   Boolean  @default(false)
+  updated_by  String?  @db.Uuid
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_settings__updated_by__users")
+
+  @@index([category], map: "idx_settings__category")
+}
+
+model staff_evaluations {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id            String   @db.Uuid
+  evaluator_id        String   @db.Uuid
+  punctuality         Int      @default(0) @db.SmallInt
+  knowledge           Int      @default(0) @db.SmallInt
+  communication       Int      @default(0) @db.SmallInt
+  professionalism     Int      @default(0) @db.SmallInt
+  problem_solving     Int      @default(0) @db.SmallInt
+  average_rating      Decimal  @db.Decimal(3, 2)
+  strengths           String?
+  improvements        String?
+  additional_comments String?
+  recommendation      String   @db.VarChar(30)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+  users               users    @relation(fields: [evaluator_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_staff_evaluations__evaluator_id__users")
+  guides              guides   @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_staff_evaluations__guide_id__guides")
+
+  @@index([created_at], map: "idx_staff_evaluations__created_at")
+  @@index([evaluator_id], map: "idx_staff_evaluations__evaluator_id")
+  @@index([guide_id], map: "idx_staff_evaluations__guide_id")
+}
+
+model suggestions {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  feedback_id String?   @db.Uuid
+  title       String    @db.VarChar(200)
+  description String
+  category    String?   @db.VarChar(50)
+  status      String    @default("submitted") @db.VarChar(20)
+  votes_count Int       @default(0)
+  created_by  String    @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  users       users     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_suggestions__created_by__users")
+  feedback    feedback? @relation(fields: [feedback_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_suggestions__feedback_id__feedback")
+
+  @@index([category], map: "idx_suggestions__category")
+  @@index([created_at], map: "idx_suggestions__created_at")
+  @@index([feedback_id], map: "idx_suggestions__feedback_id")
+  @@index([status], map: "idx_suggestions__status")
+}
+
+model system_config {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_name          String   @default("Futurismo Tours") @db.VarChar(200)
+  company_logo          String?
+  company_phone         String?  @db.VarChar(50)
+  company_email         String?  @db.VarChar(200)
+  company_website       String?  @db.VarChar(500)
+  company_address       String?
+  timezone              String   @default("America/Lima") @db.VarChar(100)
+  currency              String   @default("PEN") @db.VarChar(10)
+  language              String   @default("es") @db.VarChar(10)
+  date_format           String   @default("DD/MM/YYYY") @db.VarChar(20)
+  time_format           String   @default("HH:mm") @db.VarChar(20)
+  theme                 Json?    @default("{\"primaryColor\": \"#1976d2\", \"secondaryColor\": \"#dc004e\"}")
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @db.Timestamptz(6)
+  account_cci           String?  @db.VarChar(50)
+  account_number        String?  @db.VarChar(50)
+  company_ruc           String?  @db.VarChar(20)
+  admin_email           String?  @db.VarChar(200)
+  admin_emergency_phone String?  @db.VarChar(30)
+  admin_office_phone    String?  @db.VarChar(30)
+  admin_personal_phone  String?  @db.VarChar(30)
+}
+
+model tour_assignments {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id   String       @unique @db.Uuid
+  guide_id         String?      @db.Uuid
+  driver_id        String?      @db.Uuid
+  vehicle_id       String?      @db.Uuid
+  notes            String?
+  pickup_location  String?
+  pickup_time      DateTime?    @db.Time(6)
+  status           String       @default("pending") @db.VarChar(20)
+  pdf_generated_at DateTime?    @db.Timestamptz(6)
+  whatsapp_sent_at DateTime?    @db.Timestamptz(6)
+  assigned_by      String?      @db.Uuid
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime     @default(now()) @db.Timestamptz(6)
+  users            users?       @relation(fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_assignments__assigned_by__users")
+  drivers          drivers?     @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_assignments__driver_id__drivers")
+  guides           guides?      @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_assignments__guide_id__guides")
+  reservations     reservations @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_assignments__reservation_id__reservations")
+  vehicles         vehicles?    @relation(fields: [vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_assignments__vehicle_id__vehicles")
+
+  @@index([driver_id], map: "idx_tour_assignments__driver_id")
+  @@index([guide_id], map: "idx_tour_assignments__guide_id")
+  @@index([status], map: "idx_tour_assignments__status")
+  @@index([vehicle_id], map: "idx_tour_assignments__vehicle_id")
+}
+
+model tour_photos {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active_tour_id String       @db.Uuid
+  tour_stop_id   String?      @db.Uuid
+  photo_url      String
+  thumbnail_url  String?
+  caption        String?      @db.VarChar(500)
+  taken_by       String?      @db.Uuid
+  latitude       Decimal?     @db.Decimal(10, 7)
+  longitude      Decimal?     @db.Decimal(10, 7)
+  taken_at       DateTime     @default(now()) @db.Timestamptz(6)
+  active_tours   active_tours @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_photos__active_tour_id__active_tours")
+  users          users?       @relation(fields: [taken_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_photos__taken_by__users")
+  tour_stops     tour_stops?  @relation(fields: [tour_stop_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_photos__tour_stop_id__tour_stops")
+
+  @@index([active_tour_id], map: "idx_tour_photos__active_tour_id")
+  @@index([taken_at], map: "idx_tour_photos__taken_at")
+  @@index([tour_stop_id], map: "idx_tour_photos__tour_stop_id")
+}
+
+model tour_progress {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active_tour_id String       @db.Uuid
+  tour_stop_id   String       @db.Uuid
+  status         String       @default("pending") @db.VarChar(20)
+  arrived_at     DateTime?    @db.Timestamptz(6)
+  departed_at    DateTime?    @db.Timestamptz(6)
+  notes          String?
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  active_tours   active_tours @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_progress__active_tour_id__active_tours")
+  tour_stops     tour_stops   @relation(fields: [tour_stop_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_progress__tour_stop_id__tour_stops")
+
+  @@unique([active_tour_id, tour_stop_id], map: "tour_progress_active_tour_stop_key")
+  @@index([active_tour_id], map: "idx_tour_progress__active_tour_id")
+  @@index([tour_stop_id], map: "idx_tour_progress__tour_stop_id")
+}
+
+model tour_stops {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_id        String           @db.Uuid
+  order_num      Int
+  name           String           @db.VarChar(200)
+  duration       Int?
+  description    String?
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  tour_incidents tour_incidents[]
+  tour_photos    tour_photos[]
+  tour_progress  tour_progress[]
+  tours          tours            @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_stops__tour_id__tours")
+
+  @@index([tour_id], map: "idx_tour_stops__tour_id")
+}
+
+model tourist_ratings {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tourist_id     String        @db.Uuid
+  service_id     String?       @db.Uuid
+  reservation_id String?       @db.Uuid
+  rating         String        @db.VarChar(20)
+  comments       String?
+  rated_by_id    String        @db.Uuid
+  tourist_name   String?       @db.VarChar(200)
+  created_at     DateTime      @default(now()) @db.Timestamptz(6)
+  users          users         @relation(fields: [rated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tourist_ratings__rated_by_id__users")
+  reservations   reservations? @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tourist_ratings__reservation_id__reservations")
+
+  @@index([created_at], map: "idx_tourist_ratings__created_at")
+  @@index([rated_by_id], map: "idx_tourist_ratings__rated_by_id")
+  @@index([rating], map: "idx_tourist_ratings__rating")
+  @@index([reservation_id], map: "idx_tourist_ratings__reservation_id")
+  @@index([service_id], map: "idx_tourist_ratings__service_id")
+  @@index([tourist_id], map: "idx_tourist_ratings__tourist_id")
+}
+
+model tours {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String?        @unique @db.VarChar(20)
+  name               String         @db.VarChar(200)
+  description        String?
+  short_description  String?        @db.VarChar(500)
+  category           String?        @db.VarChar(50)
+  tour_type          String?        @db.VarChar(50)
+  duration           Int?
+  price              Decimal        @default(0) @db.Decimal(10, 2)
+  child_price        Decimal?       @db.Decimal(10, 2)
+  max_capacity       Int?
+  includes_guide     Boolean        @default(true)
+  includes_transport Boolean        @default(true)
+  meeting_point      String?
+  languages          Json?          @default("[]")
+  image              String?
+  includes           String[]       @default([])
+  excludes           String[]       @default([])
+  notes              String?
+  active             Boolean        @default(true)
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime       @default(now()) @db.Timestamptz(6)
+  expenses           expenses[]
+  income             income[]
+  reservations       reservations[]
+  tour_stops         tour_stops[]
+
+  @@index([active], map: "idx_tours__active")
+  @@index([category], map: "idx_tours__category")
+  @@index([name], map: "idx_tours__name")
+  @@index([tour_type], map: "idx_tours__tour_type")
+}
+
+model tour_categories {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  code        String   @unique @db.VarChar(50)
+  description String?
+  color       String?  @db.VarChar(20)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([code], map: "idx_tour_categories__code")
+  @@index([is_active], map: "idx_tour_categories__is_active")
+}
+
+model user_favorites {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  guide_id   String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  guides     guides    @relation(fields: [guide_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, guide_id], map: "user_favorites_unique")
+  @@index([guide_id], map: "idx_user_favorites__guide_id")
+  @@index([user_id], map: "idx_user_favorites__user_id")
+}
+
+model users {
+  id                                                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username                                            String                  @unique(map: "idx_users__username") @db.VarChar(50)
+  email                                               String                  @unique(map: "idx_users__email") @db.VarChar(255)
+  password_hash                                       String                  @db.VarChar(255)
+  first_name                                          String                  @db.VarChar(100)
+  last_name                                           String                  @db.VarChar(100)
+  phone                                               String?                 @db.VarChar(20)
+  status                                              String                  @default("active") @db.VarChar(20)
+  document_type                                       String?                 @db.VarChar(20)
+  document_number                                     String?                 @db.VarChar(20)
+  birth_date                                          DateTime?               @db.Date
+  address                                             String?
+  city                                                String?                 @db.VarChar(100)
+  profile_photo                                       String?
+  created_at                                          DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                                          DateTime                @default(now()) @db.Timestamptz(6)
+  last_login_at                                       DateTime?               @db.Timestamptz(6)
+  deleted_at                                          DateTime?               @db.Timestamptz(6)
+  role_id                                             Int
+  agencies                                            agencies?
+  audit_logs                                          audit_logs[]
+  chat_participants                                   chat_participants[]
+  chats                                               chats[]
+  documents_documents_user_idTousers                  documents[]             @relation("documents_user_idTousers")
+  documents_documents_verified_byTousers              documents[]             @relation("documents_verified_byTousers")
+  feedback_feedback_responded_byTousers               feedback[]              @relation("feedback_responded_byTousers")
+  feedback_feedback_user_idTousers                    feedback[]              @relation("feedback_user_idTousers")
+  guides                                              guides?
+  messages                                            messages[]
+  monitoring_alerts                                   monitoring_alerts[]
+  notification_settings                               notification_settings?
+  notifications                                       notifications[]
+  points_history                                      points_history[]
+  protocols_protocols_approved_byTousers              protocols[]             @relation("protocols_approved_byTousers")
+  protocols_protocols_created_byTousers               protocols[]             @relation("protocols_created_byTousers")
+  ratings                                             ratings[]
+  redemptions                                         redemptions[]
+  reservations                                        reservations[]
+  reviews                                             reviews[]
+  service_area_ratings                                service_area_ratings[]
+  settings                                            settings[]
+  staff_evaluations                                   staff_evaluations[]
+  suggestions                                         suggestions[]
+  tour_assignments                                    tour_assignments[]
+  tour_incidents                                      tour_incidents[]
+  tour_photos                                         tour_photos[]
+  tourist_ratings                                     tourist_ratings[]
+  user_favorites                                      user_favorites[]
+  user_permissions_user_permissions_user_idTousers    user_permissions[]      @relation("user_permissions_user_idTousers")
+  user_permissions_user_permissions_granted_byTousers user_permissions[]      @relation("user_permissions_granted_byTousers")
+  user_terms_acceptance                               user_terms_acceptance[]
+  roles                                               roles                   @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users__role_id__roles")
+
+  @@index([status], map: "idx_users__status")
+  @@index([deleted_at], map: "idx_users__deleted_at")
+}
+
+model vehicle_documents {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicle_id      String   @db.Uuid
+  document_type   String   @db.VarChar(30)
+  document_number String?  @db.VarChar(50)
+  expiry_date     DateTime @db.Date
+  file_url        String?
+  is_valid        Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+  vehicles        vehicles @relation(fields: [vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_vehicle_documents__vehicle_id__vehicles")
+
+  @@index([document_type], map: "idx_vehicle_documents__document_type")
+  @@index([expiry_date], map: "idx_vehicle_documents__expiry_date")
+  @@index([vehicle_id], map: "idx_vehicle_documents__vehicle_id")
+}
+
+model vehicles {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plate             String              @unique @db.VarChar(15)
+  brand             String              @db.VarChar(50)
+  model             String              @db.VarChar(100)
+  year              Int?                @db.SmallInt
+  capacity          Int?                @db.SmallInt
+  vehicle_type      String?             @db.VarChar(30)
+  color             String?             @db.VarChar(30)
+  photo_url         String?
+  status            String              @default("active") @db.VarChar(20)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  tour_assignments  tour_assignments[]
+  vehicle_documents vehicle_documents[]
+
+  @@index([brand], map: "idx_vehicles__brand")
+  @@index([status], map: "idx_vehicles__status")
+  @@index([vehicle_type], map: "idx_vehicles__vehicle_type")
+}
+
+model working_hours {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id       String    @db.Uuid
+  day_of_week    Int       @db.SmallInt
+  is_working_day Boolean   @default(true)
+  start_time     DateTime? @db.Time(6)
+  end_time       DateTime? @db.Time(6)
+  break_start    DateTime? @db.Time(6)
+  break_end      DateTime? @db.Time(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  guides         guides    @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_working_hours__guide_id__guides")
+
+  @@unique([guide_id, day_of_week], map: "working_hours_guide_day_unique")
+  @@index([day_of_week], map: "idx_working_hours__day_of_week")
+  @@index([guide_id], map: "idx_working_hours__guide_id")
+}
+
+model terms_and_conditions {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type                  String                  @db.VarChar(50)
+  version               String                  @db.VarChar(20)
+  title                 String                  @db.VarChar(200)
+  content               String
+  is_active             Boolean                 @default(false)
+  effective_date        DateTime                @db.Date
+  created_by            String?                 @db.Uuid
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  user_terms_acceptance user_terms_acceptance[]
+
+  @@unique([type, version], map: "terms_type_version_unique")
+  @@index([type, is_active], map: "idx_terms__type_active")
+}
+
+model user_terms_acceptance {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id              String               @db.Uuid
+  terms_id             String               @db.Uuid
+  ip_address           String?              @db.VarChar(45)
+  user_agent           String?
+  accepted_at          DateTime             @default(now()) @db.Timestamptz(6)
+  terms_and_conditions terms_and_conditions @relation(fields: [terms_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_terms__terms_id")
+  users                users                @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_terms__user_id")
+
+  @@unique([user_id, terms_id], map: "user_terms_unique")
+  @@index([user_id], map: "idx_user_terms__user_id")
+  @@index([terms_id], map: "idx_user_terms__terms_id")
+}
+
+model languages {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String    @unique @db.VarChar(10)
+  name        String    @db.VarChar(100)
+  native_name String    @db.VarChar(100)
+  is_active   Boolean   @default(true)
+  sort_order  Int       @default(0) @db.SmallInt
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @db.Timestamptz(6)
+
+  @@index([code], map: "idx_languages__code")
+  @@index([is_active], map: "idx_languages__is_active")
+  @@index([sort_order], map: "idx_languages__sort_order")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model emergency_material_items {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  material_id         String              @db.Uuid
+  name                String              @db.VarChar(200)
+  order_index         Int?                @default(0) @db.SmallInt
+  created_at          DateTime?           @default(now()) @db.Timestamptz(6)
+  emergency_materials emergency_materials @relation(fields: [material_id], references: [id], onDelete: Cascade, map: "fk_material_items__material_id__emergency_materials")
+
+  @@index([material_id], map: "idx_emergency_material_items__material_id")
+  @@index([material_id, order_index], map: "idx_emergency_material_items__order_index")
+}
+
+model agency_payment_methods {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agency_id      String    @db.Uuid
+  type           String    @db.VarChar(30)
+  label          String?   @db.VarChar(100)
+  bank           String?   @db.VarChar(100)
+  account_number String?   @db.VarChar(30)
+  cci            String?   @db.VarChar(25)
+  card_number    String?   @db.VarChar(20)
+  phone_number   String?   @db.VarChar(20)
+  holder_name    String?   @db.VarChar(200)
+  currency       String?   @default("PEN") @db.VarChar(3)
+  account_type   String?   @db.VarChar(20)
+  card_type      String?   @db.VarChar(20)
+  expiry_date    String?   @db.VarChar(10)
+  description    String?
+  is_main        Boolean?  @default(false)
+  is_active      Boolean?  @default(true)
+  sort_order     Int?      @default(0) @db.SmallInt
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime? @default(now()) @db.Timestamptz(6)
+  agencies       agencies  @relation(fields: [agency_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_agency_payment_methods__agencies")
+
+  @@index([agency_id], map: "idx_apm__agency_id")
+  @@index([is_active], map: "idx_apm__is_active")
+  @@index([type], map: "idx_apm__type")
+}
+
+model system_payment_methods {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type           String    @db.VarChar(30)
+  label          String?   @db.VarChar(100)
+  bank           String?   @db.VarChar(100)
+  account_number String?   @db.VarChar(30)
+  cci            String?   @db.VarChar(25)
+  card_number    String?   @db.VarChar(20)
+  phone_number   String?   @db.VarChar(20)
+  holder_name    String?   @db.VarChar(200)
+  currency       String?   @default("PEN") @db.VarChar(3)
+  account_type   String?   @db.VarChar(20)
+  card_type      String?   @db.VarChar(20)
+  expiry_date    String?   @db.VarChar(10)
+  description    String?
+  is_main        Boolean?  @default(false)
+  is_active      Boolean?  @default(true)
+  sort_order     Int?      @default(0) @db.SmallInt
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([is_active], map: "idx_spm__is_active")
+  @@index([type], map: "idx_spm__type")
+}
+
+model availability {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id     String       @db.Uuid
+  date         DateTime     @db.Date
+  is_available Boolean      @default(true)
+  notes        String?
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime     @default(now()) @db.Timestamptz(6)
+  guides       guides       @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_availability__guide_id__guides")
+  time_slots   time_slots[]
+
+  @@unique([guide_id, date], map: "availability_guide_date_unique")
+  @@index([date], map: "idx_availability__date")
+  @@index([guide_id, date], map: "idx_availability__guide_date")
+  @@index([guide_id], map: "idx_availability__guide_id")
+}
+
+model guide_pricing {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guide_id         String             @db.Uuid
+  service_name     String             @db.VarChar(200)
+  description      String?
+  price_per_person Decimal            @db.Decimal(10, 2)
+  currency         String?            @default("PEN") @db.VarChar(3)
+  min_group_size   Int?               @default(1)
+  max_group_size   Int?               @default(50)
+  duration_hours   Decimal?           @db.Decimal(4, 1)
+  includes         String?
+  active           Boolean?           @default(true)
+  created_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  guides           guides             @relation(fields: [guide_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  service_requests service_requests[]
+
+  @@index([active], map: "idx_guide_pricing__active")
+  @@index([guide_id], map: "idx_guide_pricing__guide_id")
+}
+
+model time_slots {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  availability_id String        @db.Uuid
+  start_time      DateTime      @db.Time(6)
+  end_time        DateTime      @db.Time(6)
+  status          String        @default("available") @db.VarChar(20)
+  reservation_id  String?       @db.Uuid
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  availability    availability  @relation(fields: [availability_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_time_slots__availability_id__availability")
+  reservations    reservations? @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_time_slots__reservation_id__reservations")
+
+  @@index([availability_id], map: "idx_time_slots__availability_id")
+  @@index([reservation_id], map: "idx_time_slots__reservation_id")
+  @@index([status], map: "idx_time_slots__status")
+}
+
+model tour_incidents {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active_tour_id String       @db.Uuid
+  tour_stop_id   String?      @db.Uuid
+  type           String       @db.VarChar(50)
+  severity       String       @default("medium") @db.VarChar(20)
+  description    String
+  reported_by    String?      @db.Uuid
+  latitude       Decimal?     @db.Decimal(10, 7)
+  longitude      Decimal?     @db.Decimal(10, 7)
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  active_tours   active_tours @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__active_tour_id__active_tours")
+  tour_stops     tour_stops?  @relation(fields: [tour_stop_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__tour_stop_id__tour_stops")
+  users          users?       @relation(fields: [reported_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__reported_by__users")
+
+  @@index([active_tour_id], map: "idx_tour_incidents__active_tour_id")
+  @@index([created_at], map: "idx_tour_incidents__created_at")
+  @@index([severity], map: "idx_tour_incidents__severity")
+  @@index([type], map: "idx_tour_incidents__type")
+}
+
+model monitoring_alerts {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active_tour_id  String?       @db.Uuid
+  type            String        @db.VarChar(50)
+  severity        String        @default("medium") @db.VarChar(20)
+  message         String
+  acknowledged    Boolean       @default(false)
+  acknowledged_by String?       @db.Uuid
+  acknowledged_at DateTime?     @db.Timestamptz(6)
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  active_tours    active_tours? @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_monitoring_alerts__active_tour_id__active_tours")
+  users           users?        @relation(fields: [acknowledged_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_monitoring_alerts__acknowledged_by__users")
+
+  @@index([acknowledged], map: "idx_monitoring_alerts__acknowledged")
+  @@index([active_tour_id], map: "idx_monitoring_alerts__active_tour_id")
+  @@index([created_at], map: "idx_monitoring_alerts__created_at")
+  @@index([severity], map: "idx_monitoring_alerts__severity")
+}
+
+model user_permissions {
+  id                                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                  String      @db.Uuid
+  permission_id                            String      @db.Uuid
+  granted_at                               DateTime    @default(now()) @db.Timestamptz(6)
+  granted_by                               String?     @db.Uuid
+  permissions                              permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permissions__permission_id__permissions")
+  users_user_permissions_user_idTousers    users       @relation("user_permissions_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permissions__user_id__users")
+  users_user_permissions_granted_byTousers users?      @relation("user_permissions_granted_byTousers", fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_permissions__granted_by__users")
+
+  @@unique([user_id, permission_id], map: "user_permissions_unique")
+  @@index([permission_id], map: "idx_user_permissions__permission_id")
+  @@index([user_id], map: "idx_user_permissions__user_id")
+}
