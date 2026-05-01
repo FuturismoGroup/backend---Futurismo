@@ -1,36 +1,18 @@
 // Routes de Profile
 // Maneja documentos y otros datos del perfil de usuario
+// Almacenamiento en Wasabi (vía utils/wasabiStorage)
 
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
-const fs = require('fs');
 const documentController = require('../controllers/documentController');
 const { authenticate } = require('../middlewares/auth');
 const uploadController = require('../controllers/uploadController');
+const { uploadBuffer } = require('../utils/wasabiStorage');
 
-// Asegurar que el directorio de uploads existe
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Almacenamiento en memoria — el handler sube el buffer a Wasabi
+const memoryStorage = multer.memoryStorage();
 
-// Configuracion de almacenamiento para documentos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const randomBytes = crypto.randomBytes(8).toString('hex');
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `doc-${timestamp}-${randomBytes}${ext}`);
-  }
-});
-
-// Filtro de archivos para documentos
 const documentFilter = (req, file, cb) => {
   const allowedTypes = [
     ...uploadController.ALLOWED_IMAGE_TYPES,
@@ -44,38 +26,32 @@ const documentFilter = (req, file, cb) => {
 };
 
 const uploadDocument = multer({
-  storage,
+  storage: memoryStorage,
   fileFilter: documentFilter,
-  limits: {
-    fileSize: uploadController.MAX_DOCUMENT_SIZE
-  }
+  limits: { fileSize: uploadController.MAX_DOCUMENT_SIZE }
 });
 
-// Middleware para manejar errores de multer
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'El archivo excede el tamano maximo permitido (10MB)'
+        message: 'El archivo excede el tamaño máximo permitido (10MB)'
       });
     }
-    return res.status(400).json({
-      success: false,
-      error: 'Bad Request',
-      message: err.message
-    });
+    return res.status(400).json({ success: false, error: 'Bad Request', message: err.message });
   }
   if (err) {
-    return res.status(400).json({
-      success: false,
-      error: 'Bad Request',
-      message: err.message
-    });
+    return res.status(400).json({ success: false, error: 'Bad Request', message: err.message });
   }
   next();
 };
+
+function monthFolder() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 /**
  * GET /api/profile/documents
@@ -86,7 +62,6 @@ router.get('/documents', authenticate, documentController.getMyDocuments);
 
 /**
  * GET /api/profile/documents/:id
- * Obtener un documento especifico
  */
 router.get('/documents/:id', authenticate, documentController.getDocumentById);
 
@@ -99,7 +74,7 @@ router.post('/documents', authenticate, documentController.createDocument);
 
 /**
  * POST /api/profile/documents/upload
- * Subir y crear documento en un solo paso
+ * Subir y crear documento en un solo paso (a Wasabi).
  * FormData: file, document_type, name?, expiry_date?
  */
 router.post(
@@ -113,16 +88,13 @@ router.post(
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
-          message: 'No se proporciono ningun archivo'
+          message: 'No se proporcionó ningún archivo'
         });
       }
 
       const { document_type, name, expiry_date } = req.body;
 
       if (!document_type) {
-        // Eliminar archivo si falta document_type
-        const fsPromises = require('fs').promises;
-        await fsPromises.unlink(req.file.path).catch(() => {});
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
@@ -130,14 +102,20 @@ router.post(
         });
       }
 
-      const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-      const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+      // Subir a Wasabi bajo profile-documents/{userId}/{YYYY-MM}/
+      const userPrefix = req.user?.id ? `profile-documents/${req.user.id}/${monthFolder()}` : `profile-documents/${monthFolder()}`;
+      const uploaded = await uploadBuffer({
+        prefix: userPrefix,
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        contentType: req.file.mimetype,
+        metadata: { uploadedBy: req.user?.id || 'anonymous' }
+      });
 
-      // Guardar en BD usando el controller
       req.body = {
         name: name || req.file.originalname.replace(/\.[^/.]+$/, ''),
         document_type,
-        file_url: fileUrl,
+        file_url: uploaded.url,
         file_type: req.file.mimetype,
         file_size: req.file.size,
         expiry_date: expiry_date || null
@@ -146,10 +124,6 @@ router.post(
       return documentController.createDocument(req, res);
     } catch (error) {
       console.error('Error en upload document:', error);
-      if (req.file) {
-        const fsPromises = require('fs').promises;
-        await fsPromises.unlink(req.file.path).catch(() => {});
-      }
       return res.status(500).json({
         success: false,
         error: 'Internal Server Error',
@@ -161,13 +135,12 @@ router.post(
 
 /**
  * DELETE /api/profile/documents/:id
- * Eliminar documento del usuario
  */
 router.delete('/documents/:id', authenticate, documentController.deleteDocument);
 
 /**
  * GET /api/profile/document-templates
- * Obtener documentos del usuario (alias para compatibilidad con frontend existente)
+ * Alias de getMyDocuments para compatibilidad con frontend.
  */
 router.get('/document-templates', authenticate, documentController.getMyDocuments);
 

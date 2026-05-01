@@ -3,7 +3,7 @@
 // Almacena archivos físicos en uploads/tours/{activeTourId}/
 
 const prisma = require('../config/db');
-const { getPhotoUrl, deletePhotoFile } = require('../middlewares/uploadTourPhoto');
+const { uploadTourPhotoToStorage, deletePhotoFile } = require('../middlewares/uploadTourPhoto');
 
 /**
  * UploadTourPhoto
@@ -65,15 +65,15 @@ const uploadTourPhoto = async (req, res) => {
       });
     }
 
-    // Construir URL de la foto
-    const photoUrl = getPhotoUrl(tourId, req.file.filename);
+    // Subir a Wasabi y obtener URL pública
+    const uploaded = await uploadTourPhotoToStorage(tourId, req.file);
 
     // Guardar en base de datos
     const photo = await prisma.tour_photos.create({
       data: {
         active_tour_id: tourId,
         tour_stop_id: tourStopId && uuidRegex.test(tourStopId) ? tourStopId : null,
-        photo_url: photoUrl,
+        photo_url: uploaded.url,
         caption: caption || null,
         taken_by: userId,
         latitude: latitude ? parseFloat(latitude) : null,
@@ -81,7 +81,7 @@ const uploadTourPhoto = async (req, res) => {
       }
     });
 
-    console.log(`[PHOTO] Foto subida para tour ${tourId.substring(0, 8)}: ${req.file.filename}`);
+    console.log(`[PHOTO] Foto subida para tour ${tourId.substring(0, 8)}: ${uploaded.filename}`);
 
     return res.status(201).json({
       success: true,
@@ -157,18 +157,18 @@ const uploadMultipleTourPhotos = async (req, res) => {
       }
     }
 
-    // Guardar cada foto
+    // Subir cada archivo a Wasabi y persistir
     const uploadedPhotos = [];
     for (let i = 0; i < req.files.length; i++) {
       const file = req.files[i];
-      const photoUrl = getPhotoUrl(tourId, file.filename);
+      const uploaded = await uploadTourPhotoToStorage(tourId, file);
       const caption = captionArray[i] || null;
 
       const photo = await prisma.tour_photos.create({
         data: {
           active_tour_id: tourId,
           tour_stop_id: tourStopId && uuidRegex.test(tourStopId) ? tourStopId : null,
-          photo_url: photoUrl,
+          photo_url: uploaded.url,
           caption: caption,
           taken_by: userId,
           latitude: latitude ? parseFloat(latitude) : null,
@@ -338,14 +338,11 @@ const deleteTourPhoto = async (req, res) => {
       });
     }
 
-    // Extraer nombre de archivo de la URL
-    const filename = photo.photo_url.split('/').pop();
-
-    // Eliminar archivo físico
+    // Eliminar objeto del bucket usando la URL almacenada
     try {
-      await deletePhotoFile(tourId, filename);
+      await deletePhotoFile(photo.photo_url);
     } catch (err) {
-      console.error('Error eliminando archivo físico:', err);
+      console.error('Error eliminando archivo de Wasabi:', err);
       // Continuar con eliminación de BD aunque falle el archivo
     }
 
