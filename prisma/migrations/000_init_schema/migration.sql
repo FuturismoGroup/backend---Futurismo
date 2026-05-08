@@ -1,14 +1,3 @@
--- =============================================================================
--- MIGRACIÓN INICIAL - Futurismo App
--- =============================================================================
--- 100% homologada con prisma/schema.prisma
--- Crea la base de datos completa desde cero
--- =============================================================================
-
--- =============================================================================
--- SECCIÓN 1: TABLAS
--- =============================================================================
-
 -- CreateTable
 CREATE TABLE "active_tours" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -54,32 +43,6 @@ CREATE TABLE "agencies" (
     "payment_methods" JSONB DEFAULT '[]',
 
     CONSTRAINT "agencies_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "agency_payment_methods" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "agency_id" UUID NOT NULL,
-    "type" VARCHAR(30) NOT NULL,
-    "label" VARCHAR(100),
-    "bank" VARCHAR(100),
-    "account_number" VARCHAR(30),
-    "cci" VARCHAR(25),
-    "card_number" VARCHAR(20),
-    "phone_number" VARCHAR(20),
-    "holder_name" VARCHAR(200),
-    "currency" VARCHAR(3) DEFAULT 'PEN',
-    "account_type" VARCHAR(20),
-    "card_type" VARCHAR(20),
-    "expiry_date" VARCHAR(10),
-    "description" TEXT,
-    "is_main" BOOLEAN DEFAULT false,
-    "is_active" BOOLEAN DEFAULT true,
-    "sort_order" SMALLINT DEFAULT 0,
-    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "agency_payment_methods_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -225,17 +188,6 @@ CREATE TABLE "emergency_contacts" (
 );
 
 -- CreateTable
-CREATE TABLE "emergency_material_items" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "material_id" UUID NOT NULL,
-    "name" VARCHAR(200) NOT NULL,
-    "order_index" SMALLINT DEFAULT 0,
-    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "emergency_material_items_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "emergency_materials" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(200) NOT NULL,
@@ -348,25 +300,6 @@ CREATE TABLE "guide_locations" (
 );
 
 -- CreateTable
-CREATE TABLE "guide_pricing" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "guide_id" UUID NOT NULL,
-    "service_name" VARCHAR(200) NOT NULL,
-    "description" TEXT,
-    "price_per_person" DECIMAL(10,2) NOT NULL,
-    "currency" VARCHAR(3) DEFAULT 'PEN',
-    "min_group_size" INTEGER DEFAULT 1,
-    "max_group_size" INTEGER DEFAULT 50,
-    "duration_hours" DECIMAL(4,1),
-    "includes" TEXT,
-    "active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "guide_pricing_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "guides" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "user_id" UUID NOT NULL,
@@ -393,8 +326,6 @@ CREATE TABLE "guides" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "status" VARCHAR(20) DEFAULT 'active',
-    "price_per_person" DECIMAL(10,2),
-    "work_zones" JSONB DEFAULT '[]',
 
     CONSTRAINT "guides_pkey" PRIMARY KEY ("id")
 );
@@ -413,7 +344,6 @@ CREATE TABLE "income" (
     "notes" TEXT,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "service_request_id" UUID,
 
     CONSTRAINT "income_pkey" PRIMARY KEY ("id")
 );
@@ -433,20 +363,6 @@ CREATE TABLE "income_types" (
 );
 
 -- CreateTable
-CREATE TABLE "languages" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "code" VARCHAR(10) NOT NULL,
-    "name" VARCHAR(100) NOT NULL,
-    "native_name" VARCHAR(100) NOT NULL,
-    "is_active" BOOLEAN NOT NULL DEFAULT true,
-    "sort_order" SMALLINT NOT NULL DEFAULT 0,
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6),
-
-    CONSTRAINT "languages_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "locations" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "parent_id" UUID,
@@ -463,6 +379,20 @@ CREATE TABLE "locations" (
 );
 
 -- CreateTable
+CREATE TABLE "message_attachments" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "message_id" UUID NOT NULL,
+    "file_name" VARCHAR(255) NOT NULL,
+    "file_url" TEXT NOT NULL,
+    "file_type" VARCHAR(50) NOT NULL,
+    "file_size" BIGINT,
+    "thumbnail_url" TEXT,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "message_attachments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "messages" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "chat_id" UUID NOT NULL,
@@ -476,21 +406,6 @@ CREATE TABLE "messages" (
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "messages_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "monitoring_alerts" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "active_tour_id" UUID,
-    "type" VARCHAR(50) NOT NULL,
-    "severity" VARCHAR(20) NOT NULL DEFAULT 'medium',
-    "message" TEXT NOT NULL,
-    "acknowledged" BOOLEAN NOT NULL DEFAULT false,
-    "acknowledged_by" UUID,
-    "acknowledged_at" TIMESTAMPTZ(6),
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "monitoring_alerts_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -594,8 +509,9 @@ CREATE TABLE "personal_events" (
 CREATE TABLE "points_config" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "points_per_sol" DOUBLE PRECISION NOT NULL DEFAULT 1,
-    "levels" JSONB DEFAULT '[{"name": "Bronze", "minPoints": 0}, {"name": "Silver", "minPoints": 1000}, {"name": "Gold", "minPoints": 5000}, {"name": "Platinum", "minPoints": 20000}]',
+    "levels" JSONB DEFAULT '[{"name": "Bronce", "minPoints": 0}, {"name": "Plata", "minPoints": 1000}, {"name": "Oro", "minPoints": 5000}]',
     "expiration_months" INTEGER NOT NULL DEFAULT 12,
+    "minimum_redemption" INTEGER NOT NULL DEFAULT 100,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -652,6 +568,25 @@ CREATE TABLE "protocols" (
 );
 
 -- CreateTable
+CREATE TABLE "provider_assignments" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "reservation_id" UUID NOT NULL,
+    "provider_id" UUID NOT NULL,
+    "provider_service_id" UUID,
+    "service_date" DATE NOT NULL,
+    "service_time" TIME(6),
+    "pax_count" INTEGER,
+    "notes" TEXT,
+    "quoted_price" DECIMAL(10,2),
+    "status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "created_by" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "provider_assignments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "provider_categories" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(100) NOT NULL,
@@ -701,7 +636,6 @@ CREATE TABLE "providers" (
     "status" VARCHAR(20) NOT NULL DEFAULT 'active',
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "observations" TEXT,
 
     CONSTRAINT "providers_pkey" PRIMARY KEY ("id")
 );
@@ -766,21 +700,6 @@ CREATE TABLE "reservation_config" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "reservation_config_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "reservation_groups" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "reservation_id" UUID NOT NULL,
-    "representative_name" VARCHAR(200) NOT NULL,
-    "representative_phone" VARCHAR(20) NOT NULL,
-    "adults_count" INTEGER NOT NULL DEFAULT 1,
-    "children_count" INTEGER NOT NULL DEFAULT 0,
-    "sort_order" SMALLINT NOT NULL DEFAULT 0,
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "reservation_groups_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -914,13 +833,6 @@ CREATE TABLE "service_requests" (
     "status" VARCHAR(20) NOT NULL DEFAULT 'pending',
     "responded_at" TIMESTAMPTZ(6),
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "pricing_id" UUID,
-    "total_price" DECIMAL(10,2),
-    "price_per_person" DECIMAL(10,2),
-    "location" VARCHAR(300),
-    "special_requirements" TEXT,
-    "guide_response_message" TEXT,
-    "calendar_event_id" UUID,
 
     CONSTRAINT "service_requests_pkey" PRIMARY KEY ("id")
 );
@@ -1004,47 +916,6 @@ CREATE TABLE "system_config" (
 );
 
 -- CreateTable
-CREATE TABLE "system_payment_methods" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "type" VARCHAR(30) NOT NULL,
-    "label" VARCHAR(100),
-    "bank" VARCHAR(100),
-    "account_number" VARCHAR(30),
-    "cci" VARCHAR(25),
-    "card_number" VARCHAR(20),
-    "phone_number" VARCHAR(20),
-    "holder_name" VARCHAR(200),
-    "currency" VARCHAR(3) DEFAULT 'PEN',
-    "account_type" VARCHAR(20),
-    "card_type" VARCHAR(20),
-    "expiry_date" VARCHAR(10),
-    "description" TEXT,
-    "is_main" BOOLEAN DEFAULT false,
-    "is_active" BOOLEAN DEFAULT true,
-    "sort_order" SMALLINT DEFAULT 0,
-    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "system_payment_methods_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "terms_and_conditions" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "type" VARCHAR(50) NOT NULL,
-    "version" VARCHAR(20) NOT NULL,
-    "title" VARCHAR(200) NOT NULL,
-    "content" TEXT NOT NULL,
-    "is_active" BOOLEAN NOT NULL DEFAULT false,
-    "effective_date" DATE NOT NULL,
-    "created_by" UUID,
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "terms_and_conditions_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "time_slots" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "availability_id" UUID NOT NULL,
@@ -1075,36 +946,6 @@ CREATE TABLE "tour_assignments" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "tour_assignments_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "tour_categories" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "name" VARCHAR(100) NOT NULL,
-    "code" VARCHAR(50) NOT NULL,
-    "description" TEXT,
-    "icon" VARCHAR(50),
-    "color" VARCHAR(20),
-    "is_active" BOOLEAN NOT NULL DEFAULT true,
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "tour_categories_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "tour_incidents" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "active_tour_id" UUID NOT NULL,
-    "tour_stop_id" UUID,
-    "type" VARCHAR(50) NOT NULL,
-    "severity" VARCHAR(20) NOT NULL DEFAULT 'medium',
-    "description" TEXT NOT NULL,
-    "reported_by" UUID,
-    "latitude" DECIMAL(10,7),
-    "longitude" DECIMAL(10,7),
-    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "tour_incidents_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1194,6 +1035,20 @@ CREATE TABLE "tours" (
 );
 
 -- CreateTable
+CREATE TABLE "tour_categories" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "name" VARCHAR(100) NOT NULL,
+    "code" VARCHAR(50) NOT NULL,
+    "description" TEXT,
+    "icon" VARCHAR(50),
+    "color" VARCHAR(20),
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "tour_categories_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "user_favorites" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "user_id" UUID NOT NULL,
@@ -1201,29 +1056,6 @@ CREATE TABLE "user_favorites" (
     "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "user_favorites_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "user_permissions" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "user_id" UUID NOT NULL,
-    "permission_id" UUID NOT NULL,
-    "granted_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "granted_by" UUID,
-
-    CONSTRAINT "user_permissions_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "user_terms_acceptance" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "user_id" UUID NOT NULL,
-    "terms_id" UUID NOT NULL,
-    "ip_address" VARCHAR(45),
-    "user_agent" TEXT,
-    "accepted_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "user_terms_acceptance_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1300,608 +1132,1075 @@ CREATE TABLE "working_hours" (
     CONSTRAINT "working_hours_pkey" PRIMARY KEY ("id")
 );
 
--- =============================================================================
--- SECCIÓN 2: ÍNDICES Y RESTRICCIONES UNIQUE
--- =============================================================================
+-- CreateTable
+CREATE TABLE "terms_and_conditions" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "type" VARCHAR(50) NOT NULL,
+    "version" VARCHAR(20) NOT NULL,
+    "title" VARCHAR(200) NOT NULL,
+    "content" TEXT NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT false,
+    "effective_date" DATE NOT NULL,
+    "created_by" UUID,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
--- active_tours
+    CONSTRAINT "terms_and_conditions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_terms_acceptance" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "user_id" UUID NOT NULL,
+    "terms_id" UUID NOT NULL,
+    "ip_address" VARCHAR(45),
+    "user_agent" TEXT,
+    "accepted_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "user_terms_acceptance_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
 CREATE UNIQUE INDEX "active_tours_reservation_id_key" ON "active_tours"("reservation_id");
+
+-- CreateIndex
 CREATE INDEX "idx_active_tours__emergency_protocol_id" ON "active_tours"("emergency_protocol_id");
+
+-- CreateIndex
 CREATE INDEX "idx_active_tours__guide_id" ON "active_tours"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_active_tours__status" ON "active_tours"("status");
 
--- agencies
+-- CreateIndex
 CREATE UNIQUE INDEX "agencies_user_id_unique" ON "agencies"("user_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "agencies_ruc_unique" ON "agencies"("ruc");
+
+-- CreateIndex
 CREATE INDEX "idx_agencies__business_name" ON "agencies"("business_name");
+
+-- CreateIndex
 CREATE INDEX "idx_agencies__level" ON "agencies"("level");
+
+-- CreateIndex
 CREATE INDEX "idx_agencies__status" ON "agencies"("status");
 
--- agency_payment_methods
-CREATE INDEX "idx_apm__agency_id" ON "agency_payment_methods"("agency_id");
-CREATE INDEX "idx_apm__is_active" ON "agency_payment_methods"("is_active");
-CREATE INDEX "idx_apm__type" ON "agency_payment_methods"("type");
-
--- audit_logs
+-- CreateIndex
 CREATE INDEX "idx_audit_logs__action" ON "audit_logs"("action");
+
+-- CreateIndex
 CREATE INDEX "idx_audit_logs__created_at" ON "audit_logs"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_audit_logs__entity_id" ON "audit_logs"("entity_id");
+
+-- CreateIndex
 CREATE INDEX "idx_audit_logs__entity_type" ON "audit_logs"("entity_type");
+
+-- CreateIndex
 CREATE INDEX "idx_audit_logs__user_id" ON "audit_logs"("user_id");
 
--- availability
-CREATE UNIQUE INDEX "availability_guide_date_unique" ON "availability"("guide_id", "date");
+-- CreateIndex
 CREATE INDEX "idx_availability__date" ON "availability"("date");
+
+-- CreateIndex
 CREATE INDEX "idx_availability__guide_date" ON "availability"("guide_id", "date");
+
+-- CreateIndex
 CREATE INDEX "idx_availability__guide_id" ON "availability"("guide_id");
 
--- chat_participants
-CREATE UNIQUE INDEX "chat_participants_chat_user_key" ON "chat_participants"("chat_id", "user_id");
+-- CreateIndex
+CREATE UNIQUE INDEX "availability_guide_date_unique" ON "availability"("guide_id", "date");
+
+-- CreateIndex
 CREATE INDEX "idx_chat_participants__chat_id" ON "chat_participants"("chat_id");
+
+-- CreateIndex
 CREATE INDEX "idx_chat_participants__user_id" ON "chat_participants"("user_id");
 
--- chats
+-- CreateIndex
+CREATE UNIQUE INDEX "chat_participants_chat_user_key" ON "chat_participants"("chat_id", "user_id");
+
+-- CreateIndex
 CREATE INDEX "idx_chats__chat_type" ON "chats"("chat_type");
+
+-- CreateIndex
 CREATE INDEX "idx_chats__last_message_at" ON "chats"("last_message_at");
+
+-- CreateIndex
 CREATE INDEX "idx_chats__reservation_id" ON "chats"("reservation_id");
 
--- documents
+-- CreateIndex
 CREATE INDEX "idx_documents__document_type" ON "documents"("document_type");
+
+-- CreateIndex
 CREATE INDEX "idx_documents__expiry_date" ON "documents"("expiry_date");
+
+-- CreateIndex
 CREATE INDEX "idx_documents__user_id" ON "documents"("user_id");
+
+-- CreateIndex
 CREATE INDEX "idx_documents__verification_status" ON "documents"("verification_status");
 
--- drivers
+-- CreateIndex
 CREATE UNIQUE INDEX "drivers_document_number_key" ON "drivers"("document_number");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "drivers_license_number_key" ON "drivers"("license_number");
+
+-- CreateIndex
 CREATE INDEX "idx_drivers__first_name" ON "drivers"("first_name");
+
+-- CreateIndex
 CREATE INDEX "idx_drivers__license_category" ON "drivers"("license_category");
+
+-- CreateIndex
 CREATE INDEX "idx_drivers__license_expiry" ON "drivers"("license_expiry");
+
+-- CreateIndex
 CREATE INDEX "idx_drivers__status" ON "drivers"("status");
 
--- emergency_categories
+-- CreateIndex
 CREATE UNIQUE INDEX "emergency_categories_name_key" ON "emergency_categories"("name");
 
--- emergency_contact_types
+-- CreateIndex
 CREATE UNIQUE INDEX "emergency_contact_types_name_key" ON "emergency_contact_types"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_contact_types__is_active" ON "emergency_contact_types"("is_active");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_contact_types__name" ON "emergency_contact_types"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_contact_types__priority" ON "emergency_contact_types"("priority");
 
--- emergency_contacts
+-- CreateIndex
 CREATE INDEX "idx_emergency_contacts__contact_type" ON "emergency_contacts"("contact_type");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_contacts__location_id" ON "emergency_contacts"("location_id");
 
--- emergency_material_items
-CREATE INDEX "idx_emergency_material_items__material_id" ON "emergency_material_items"("material_id");
-CREATE INDEX "idx_emergency_material_items__order_index" ON "emergency_material_items"("material_id", "order_index");
-
--- emergency_materials
+-- CreateIndex
 CREATE INDEX "idx_emergency_materials__category" ON "emergency_materials"("category");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_materials__is_active" ON "emergency_materials"("is_active");
+
+-- CreateIndex
 CREATE INDEX "idx_emergency_materials__is_mandatory" ON "emergency_materials"("is_mandatory");
 
--- evaluation_criteria
+-- CreateIndex
 CREATE UNIQUE INDEX "evaluation_criteria_key_key" ON "evaluation_criteria"("key");
+
+-- CreateIndex
 CREATE INDEX "idx_evaluation_criteria__is_active" ON "evaluation_criteria"("is_active");
 
--- expense_categories
+-- CreateIndex
 CREATE UNIQUE INDEX "expense_categories_value_key" ON "expense_categories"("value");
+
+-- CreateIndex
 CREATE INDEX "idx_expense_categories__value" ON "expense_categories"("value");
 
--- expenses
+-- CreateIndex
 CREATE INDEX "idx_expenses__category_id" ON "expenses"("category_id");
+
+-- CreateIndex
 CREATE INDEX "idx_expenses__date" ON "expenses"("date");
+
+-- CreateIndex
 CREATE INDEX "idx_expenses__guide_id" ON "expenses"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_expenses__tour_id" ON "expenses"("tour_id");
 
--- feedback
+-- CreateIndex
 CREATE INDEX "idx_feedback__created_at" ON "feedback"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_feedback__feedback_type" ON "feedback"("feedback_type");
+
+-- CreateIndex
 CREATE INDEX "idx_feedback__status" ON "feedback"("status");
+
+-- CreateIndex
 CREATE INDEX "idx_feedback__user_id" ON "feedback"("user_id");
 
--- financial_calculations
+-- CreateIndex
 CREATE INDEX "idx_financial_calculations__created_at" ON "financial_calculations"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_financial_calculations__guide_id" ON "financial_calculations"("guide_id");
 
--- guide_locations
+-- CreateIndex
 CREATE INDEX "idx_guide_locations__active_tour_id" ON "guide_locations"("active_tour_id");
+
+-- CreateIndex
 CREATE INDEX "idx_guide_locations__recorded_at" ON "guide_locations"("recorded_at");
 
--- guide_pricing
-CREATE INDEX "idx_guide_pricing__active" ON "guide_pricing"("active");
-CREATE INDEX "idx_guide_pricing__guide_id" ON "guide_pricing"("guide_id");
-
--- guides
+-- CreateIndex
 CREATE UNIQUE INDEX "guides_user_id_unique" ON "guides"("user_id");
-CREATE INDEX "idx_guides__agency_id" ON "guides"("agency_id");
-CREATE INDEX "idx_guides__guide_type" ON "guides"("guide_type");
-CREATE INDEX "idx_guides__languages" ON "guides" USING GIN ("languages");
-CREATE INDEX "idx_guides__specialties" ON "guides" USING GIN ("specialties");
-CREATE INDEX "idx_guides__status" ON "guides"("status");
 
--- income
+-- CreateIndex
+CREATE INDEX "idx_guides__guide_type" ON "guides"("guide_type");
+
+-- CreateIndex
+CREATE INDEX "idx_guides__agency_id" ON "guides"("agency_id");
+
+-- CreateIndex
+CREATE INDEX "idx_guides__languages" ON "guides" USING GIN ("languages");
+
+-- CreateIndex
+CREATE INDEX "idx_guides__specialties" ON "guides" USING GIN ("specialties");
+
+-- CreateIndex
 CREATE INDEX "idx_income__date" ON "income"("date");
+
+-- CreateIndex
 CREATE INDEX "idx_income__guide_id" ON "income"("guide_id");
-CREATE INDEX "idx_income__service_request_id" ON "income"("service_request_id");
+
+-- CreateIndex
 CREATE INDEX "idx_income__tour_id" ON "income"("tour_id");
+
+-- CreateIndex
 CREATE INDEX "idx_income__type_id" ON "income"("type_id");
 
--- income_types
+-- CreateIndex
 CREATE UNIQUE INDEX "income_types_value_key" ON "income_types"("value");
+
+-- CreateIndex
 CREATE INDEX "idx_income_types__value" ON "income_types"("value");
 
--- languages
-CREATE UNIQUE INDEX "languages_code_key" ON "languages"("code");
-CREATE INDEX "idx_languages__code" ON "languages"("code");
-CREATE INDEX "idx_languages__is_active" ON "languages"("is_active");
-CREATE INDEX "idx_languages__sort_order" ON "languages"("sort_order");
-
--- locations
+-- CreateIndex
 CREATE INDEX "idx_locations__code" ON "locations"("code");
+
+-- CreateIndex
 CREATE INDEX "idx_locations__name" ON "locations"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_locations__parent_id" ON "locations"("parent_id");
+
+-- CreateIndex
 CREATE INDEX "idx_locations__path" ON "locations"("path");
+
+-- CreateIndex
 CREATE INDEX "idx_locations__type" ON "locations"("type");
 
--- messages
+-- CreateIndex
+CREATE INDEX "idx_message_attachments__message_id" ON "message_attachments"("message_id");
+
+-- CreateIndex
 CREATE INDEX "idx_messages__chat_id" ON "messages"("chat_id");
+
+-- CreateIndex
 CREATE INDEX "idx_messages__created_at" ON "messages"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_messages__message_type" ON "messages"("message_type");
+
+-- CreateIndex
 CREATE INDEX "idx_messages__reply_to_id" ON "messages"("reply_to_id");
+
+-- CreateIndex
 CREATE INDEX "idx_messages__sender_id" ON "messages"("sender_id");
 
--- monitoring_alerts
-CREATE INDEX "idx_monitoring_alerts__acknowledged" ON "monitoring_alerts"("acknowledged");
-CREATE INDEX "idx_monitoring_alerts__active_tour_id" ON "monitoring_alerts"("active_tour_id");
-CREATE INDEX "idx_monitoring_alerts__created_at" ON "monitoring_alerts"("created_at");
-CREATE INDEX "idx_monitoring_alerts__severity" ON "monitoring_alerts"("severity");
-
--- notification_settings
+-- CreateIndex
 CREATE UNIQUE INDEX "notification_settings_user_id_key" ON "notification_settings"("user_id");
 
--- notifications
+-- CreateIndex
 CREATE INDEX "idx_notifications__created_at" ON "notifications"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_notifications__is_read" ON "notifications"("is_read");
+
+-- CreateIndex
 CREATE INDEX "idx_notifications__notification_type" ON "notifications"("notification_type");
+
+-- CreateIndex
 CREATE INDEX "idx_notifications__priority" ON "notifications"("priority");
+
+-- CreateIndex
 CREATE INDEX "idx_notifications__reference_id" ON "notifications"("reference_id");
+
+-- CreateIndex
 CREATE INDEX "idx_notifications__user_id" ON "notifications"("user_id");
 
--- payment_methods
+-- CreateIndex
 CREATE UNIQUE INDEX "payment_methods_name_key" ON "payment_methods"("name");
-CREATE UNIQUE INDEX "payment_methods_code_key" ON "payment_methods"("code");
-CREATE INDEX "idx_payment_methods__code" ON "payment_methods"("code");
-CREATE INDEX "idx_payment_methods__is_active" ON "payment_methods"("is_active");
 
--- permissions
+-- CreateIndex
+CREATE UNIQUE INDEX "payment_methods_code_key" ON "payment_methods"("code");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "permissions_name_key" ON "permissions"("name");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "permissions_code_key" ON "permissions"("code");
+
+-- CreateIndex
 CREATE INDEX "idx_permissions__module" ON "permissions"("module");
 
--- personal_events
+-- CreateIndex
 CREATE INDEX "idx_personal_events__end_datetime" ON "personal_events"("end_datetime");
+
+-- CreateIndex
 CREATE INDEX "idx_personal_events__event_type" ON "personal_events"("event_type");
+
+-- CreateIndex
 CREATE INDEX "idx_personal_events__guide_id" ON "personal_events"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_personal_events__start_datetime" ON "personal_events"("start_datetime");
 
--- points_history
+-- CreateIndex
 CREATE INDEX "idx_points_history__agency_id" ON "points_history"("agency_id");
+
+-- CreateIndex
 CREATE INDEX "idx_points_history__created_at" ON "points_history"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_points_history__type" ON "points_history"("type");
 
--- protocol_steps
-CREATE UNIQUE INDEX "protocol_steps_protocol_step_key" ON "protocol_steps"("protocol_id", "step_number");
+-- CreateIndex
 CREATE INDEX "idx_protocol_steps__protocol_id" ON "protocol_steps"("protocol_id");
 
--- protocols
+-- CreateIndex
+CREATE UNIQUE INDEX "protocol_steps_protocol_step_key" ON "protocol_steps"("protocol_id", "step_number");
+
+-- CreateIndex
 CREATE INDEX "idx_protocols__category_id" ON "protocols"("category_id");
+
+-- CreateIndex
 CREATE INDEX "idx_protocols__status" ON "protocols"("status");
 
--- provider_categories
+-- CreateIndex
+CREATE INDEX "idx_provider_assignments__provider_id" ON "provider_assignments"("provider_id");
+
+-- CreateIndex
+CREATE INDEX "idx_provider_assignments__reservation_id" ON "provider_assignments"("reservation_id");
+
+-- CreateIndex
+CREATE INDEX "idx_provider_assignments__service_date" ON "provider_assignments"("service_date");
+
+-- CreateIndex
+CREATE INDEX "idx_provider_assignments__status" ON "provider_assignments"("status");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "idx_provider_categories__name" ON "provider_categories"("name");
 
--- provider_services
+-- CreateIndex
 CREATE INDEX "idx_provider_services__provider_id" ON "provider_services"("provider_id");
+
+-- CreateIndex
 CREATE INDEX "idx_provider_services__service_type" ON "provider_services"("service_type");
 
--- providers
+-- CreateIndex
 CREATE INDEX "idx_providers__category_id" ON "providers"("category_id");
+
+-- CreateIndex
 CREATE INDEX "idx_providers__location_id" ON "providers"("location_id");
+
+-- CreateIndex
 CREATE INDEX "idx_providers__name" ON "providers"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_providers__status" ON "providers"("status");
 
--- ratings
+-- CreateIndex
 CREATE UNIQUE INDEX "ratings_reservation_id_key" ON "ratings"("reservation_id");
+
+-- CreateIndex
 CREATE INDEX "idx_ratings__created_at" ON "ratings"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_ratings__overall_rating" ON "ratings"("overall_rating");
+
+-- CreateIndex
 CREATE INDEX "idx_ratings__rated_by_id" ON "ratings"("rated_by_id");
 
--- recommendation_options
+-- CreateIndex
 CREATE UNIQUE INDEX "recommendation_options_value_key" ON "recommendation_options"("value");
+
+-- CreateIndex
 CREATE INDEX "idx_recommendation_options__is_active" ON "recommendation_options"("is_active");
 
--- redemptions
+-- CreateIndex
 CREATE INDEX "idx_redemptions__agency_id" ON "redemptions"("agency_id");
+
+-- CreateIndex
 CREATE INDEX "idx_redemptions__reward_id" ON "redemptions"("reward_id");
+
+-- CreateIndex
 CREATE INDEX "idx_redemptions__status" ON "redemptions"("status");
 
--- reservation_groups
-CREATE INDEX "idx_reservation_groups__reservation_id" ON "reservation_groups"("reservation_id");
-
--- reservations
+-- CreateIndex
 CREATE INDEX "idx_reservations__agency_id" ON "reservations"("agency_id");
+
+-- CreateIndex
 CREATE INDEX "idx_reservations__created_at" ON "reservations"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_reservations__date" ON "reservations"("date");
+
+-- CreateIndex
 CREATE INDEX "idx_reservations__guide_id" ON "reservations"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_reservations__status" ON "reservations"("status");
+
+-- CreateIndex
 CREATE INDEX "idx_reservations__tour_id" ON "reservations"("tour_id");
 
--- reviews
+-- CreateIndex
 CREATE INDEX "idx_reviews__created_at" ON "reviews"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_reviews__guide_id" ON "reviews"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_reviews__rating" ON "reviews"("rating");
+
+-- CreateIndex
 CREATE INDEX "idx_reviews__reviewer_id" ON "reviews"("reviewer_id");
+
+-- CreateIndex
 CREATE INDEX "idx_reviews__service_request_id" ON "reviews"("service_request_id");
 
--- reward_categories
+-- CreateIndex
 CREATE UNIQUE INDEX "idx_reward_categories__name" ON "reward_categories"("name");
 
--- rewards
+-- CreateIndex
 CREATE INDEX "idx_rewards__active" ON "rewards"("active");
+
+-- CreateIndex
 CREATE INDEX "idx_rewards__category_id" ON "rewards"("category_id");
+
+-- CreateIndex
 CREATE INDEX "idx_rewards__name" ON "rewards"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_rewards__points" ON "rewards"("points");
 
--- role_permissions
+-- CreateIndex
 CREATE INDEX "idx_role_permissions__permission_id" ON "role_permissions"("permission_id");
 
--- roles
+-- CreateIndex
 CREATE UNIQUE INDEX "idx_roles__name" ON "roles"("name");
 
--- service_area_ratings
+-- CreateIndex
 CREATE INDEX "idx_service_area_ratings__average_rating" ON "service_area_ratings"("average_rating");
+
+-- CreateIndex
 CREATE INDEX "idx_service_area_ratings__created_at" ON "service_area_ratings"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_service_area_ratings__rated_by_id" ON "service_area_ratings"("rated_by_id");
+
+-- CreateIndex
 CREATE INDEX "idx_service_area_ratings__reservation_id" ON "service_area_ratings"("reservation_id");
 
--- service_requests
+-- CreateIndex
 CREATE INDEX "idx_service_requests__agency_id" ON "service_requests"("agency_id");
+
+-- CreateIndex
 CREATE INDEX "idx_service_requests__created_at" ON "service_requests"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_service_requests__guide_id" ON "service_requests"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_service_requests__service_date" ON "service_requests"("service_date");
+
+-- CreateIndex
 CREATE INDEX "idx_service_requests__status" ON "service_requests"("status");
 
--- settings
+-- CreateIndex
 CREATE UNIQUE INDEX "settings_key_key" ON "settings"("key");
+
+-- CreateIndex
 CREATE INDEX "idx_settings__category" ON "settings"("category");
 
--- staff_evaluations
+-- CreateIndex
 CREATE INDEX "idx_staff_evaluations__created_at" ON "staff_evaluations"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_staff_evaluations__evaluator_id" ON "staff_evaluations"("evaluator_id");
+
+-- CreateIndex
 CREATE INDEX "idx_staff_evaluations__guide_id" ON "staff_evaluations"("guide_id");
 
--- suggestions
+-- CreateIndex
 CREATE INDEX "idx_suggestions__category" ON "suggestions"("category");
+
+-- CreateIndex
 CREATE INDEX "idx_suggestions__created_at" ON "suggestions"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_suggestions__feedback_id" ON "suggestions"("feedback_id");
+
+-- CreateIndex
 CREATE INDEX "idx_suggestions__status" ON "suggestions"("status");
 
--- system_payment_methods
-CREATE INDEX "idx_spm__is_active" ON "system_payment_methods"("is_active");
-CREATE INDEX "idx_spm__type" ON "system_payment_methods"("type");
-
--- terms_and_conditions
-CREATE UNIQUE INDEX "terms_type_version_unique" ON "terms_and_conditions"("type", "version");
-CREATE INDEX "idx_terms__type_active" ON "terms_and_conditions"("type", "is_active");
-
--- time_slots
+-- CreateIndex
 CREATE INDEX "idx_time_slots__availability_id" ON "time_slots"("availability_id");
+
+-- CreateIndex
 CREATE INDEX "idx_time_slots__reservation_id" ON "time_slots"("reservation_id");
+
+-- CreateIndex
 CREATE INDEX "idx_time_slots__status" ON "time_slots"("status");
 
--- tour_assignments
+-- CreateIndex
 CREATE UNIQUE INDEX "tour_assignments_reservation_id_key" ON "tour_assignments"("reservation_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_assignments__driver_id" ON "tour_assignments"("driver_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_assignments__guide_id" ON "tour_assignments"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_assignments__status" ON "tour_assignments"("status");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_assignments__vehicle_id" ON "tour_assignments"("vehicle_id");
 
--- tour_categories
-CREATE UNIQUE INDEX "tour_categories_name_key" ON "tour_categories"("name");
-CREATE UNIQUE INDEX "tour_categories_code_key" ON "tour_categories"("code");
-CREATE INDEX "idx_tour_categories__code" ON "tour_categories"("code");
-CREATE INDEX "idx_tour_categories__is_active" ON "tour_categories"("is_active");
-
--- tour_incidents
-CREATE INDEX "idx_tour_incidents__active_tour_id" ON "tour_incidents"("active_tour_id");
-CREATE INDEX "idx_tour_incidents__created_at" ON "tour_incidents"("created_at");
-CREATE INDEX "idx_tour_incidents__severity" ON "tour_incidents"("severity");
-CREATE INDEX "idx_tour_incidents__type" ON "tour_incidents"("type");
-
--- tour_photos
+-- CreateIndex
 CREATE INDEX "idx_tour_photos__active_tour_id" ON "tour_photos"("active_tour_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_photos__taken_at" ON "tour_photos"("taken_at");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_photos__tour_stop_id" ON "tour_photos"("tour_stop_id");
 
--- tour_progress
-CREATE UNIQUE INDEX "tour_progress_active_tour_stop_key" ON "tour_progress"("active_tour_id", "tour_stop_id");
+-- CreateIndex
 CREATE INDEX "idx_tour_progress__active_tour_id" ON "tour_progress"("active_tour_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_progress__tour_stop_id" ON "tour_progress"("tour_stop_id");
 
--- tour_stops
+-- CreateIndex
+CREATE UNIQUE INDEX "tour_progress_active_tour_stop_key" ON "tour_progress"("active_tour_id", "tour_stop_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tour_stops__tour_id" ON "tour_stops"("tour_id");
 
--- tourist_ratings
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__created_at" ON "tourist_ratings"("created_at");
+
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__rated_by_id" ON "tourist_ratings"("rated_by_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__rating" ON "tourist_ratings"("rating");
+
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__reservation_id" ON "tourist_ratings"("reservation_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__service_id" ON "tourist_ratings"("service_id");
+
+-- CreateIndex
 CREATE INDEX "idx_tourist_ratings__tourist_id" ON "tourist_ratings"("tourist_id");
 
--- tours
+-- CreateIndex
 CREATE UNIQUE INDEX "tours_code_key" ON "tours"("code");
+
+-- CreateIndex
 CREATE INDEX "idx_tours__active" ON "tours"("active");
+
+-- CreateIndex
 CREATE INDEX "idx_tours__category" ON "tours"("category");
+
+-- CreateIndex
 CREATE INDEX "idx_tours__name" ON "tours"("name");
+
+-- CreateIndex
 CREATE INDEX "idx_tours__tour_type" ON "tours"("tour_type");
 
--- user_favorites
-CREATE UNIQUE INDEX "user_favorites_unique" ON "user_favorites"("user_id", "guide_id");
+-- CreateIndex
+CREATE UNIQUE INDEX "tour_categories_name_key" ON "tour_categories"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tour_categories_code_key" ON "tour_categories"("code");
+
+-- CreateIndex
+CREATE INDEX "idx_tour_categories__code" ON "tour_categories"("code");
+
+-- CreateIndex
+CREATE INDEX "idx_tour_categories__is_active" ON "tour_categories"("is_active");
+
+-- CreateIndex
 CREATE INDEX "idx_user_favorites__guide_id" ON "user_favorites"("guide_id");
+
+-- CreateIndex
 CREATE INDEX "idx_user_favorites__user_id" ON "user_favorites"("user_id");
 
--- user_permissions
-CREATE UNIQUE INDEX "user_permissions_unique" ON "user_permissions"("user_id", "permission_id");
-CREATE INDEX "idx_user_permissions__permission_id" ON "user_permissions"("permission_id");
-CREATE INDEX "idx_user_permissions__user_id" ON "user_permissions"("user_id");
+-- CreateIndex
+CREATE UNIQUE INDEX "user_favorites_unique" ON "user_favorites"("user_id", "guide_id");
 
--- user_terms_acceptance
-CREATE UNIQUE INDEX "user_terms_unique" ON "user_terms_acceptance"("user_id", "terms_id");
-CREATE INDEX "idx_user_terms__terms_id" ON "user_terms_acceptance"("terms_id");
-CREATE INDEX "idx_user_terms__user_id" ON "user_terms_acceptance"("user_id");
-
--- users
+-- CreateIndex
 CREATE UNIQUE INDEX "idx_users__username" ON "users"("username");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "idx_users__email" ON "users"("email");
-CREATE INDEX "idx_users__deleted_at" ON "users"("deleted_at");
+
+-- CreateIndex
 CREATE INDEX "idx_users__status" ON "users"("status");
 
--- vehicle_documents
+-- CreateIndex
+CREATE INDEX "idx_users__deleted_at" ON "users"("deleted_at");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicle_documents__document_type" ON "vehicle_documents"("document_type");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicle_documents__expiry_date" ON "vehicle_documents"("expiry_date");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicle_documents__vehicle_id" ON "vehicle_documents"("vehicle_id");
 
--- vehicles
+-- CreateIndex
 CREATE UNIQUE INDEX "vehicles_plate_key" ON "vehicles"("plate");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicles__brand" ON "vehicles"("brand");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicles__status" ON "vehicles"("status");
+
+-- CreateIndex
 CREATE INDEX "idx_vehicles__vehicle_type" ON "vehicles"("vehicle_type");
 
--- working_hours
-CREATE UNIQUE INDEX "working_hours_guide_day_unique" ON "working_hours"("guide_id", "day_of_week");
+-- CreateIndex
 CREATE INDEX "idx_working_hours__day_of_week" ON "working_hours"("day_of_week");
+
+-- CreateIndex
 CREATE INDEX "idx_working_hours__guide_id" ON "working_hours"("guide_id");
 
--- =============================================================================
--- SECCIÓN 3: FOREIGN KEYS
--- =============================================================================
+-- CreateIndex
+CREATE UNIQUE INDEX "working_hours_guide_day_unique" ON "working_hours"("guide_id", "day_of_week");
 
--- active_tours
+-- CreateIndex
+CREATE INDEX "idx_terms__type_active" ON "terms_and_conditions"("type", "is_active");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "terms_type_version_unique" ON "terms_and_conditions"("type", "version");
+
+-- CreateIndex
+CREATE INDEX "idx_user_terms__user_id" ON "user_terms_acceptance"("user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_user_terms__terms_id" ON "user_terms_acceptance"("terms_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_terms_unique" ON "user_terms_acceptance"("user_id", "terms_id");
+
+-- AddForeignKey
 ALTER TABLE "active_tours" ADD CONSTRAINT "fk_active_tours__emergency_protocol_id__protocols" FOREIGN KEY ("emergency_protocol_id") REFERENCES "protocols"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "active_tours" ADD CONSTRAINT "fk_active_tours__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "active_tours" ADD CONSTRAINT "fk_active_tours__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- agencies
+-- AddForeignKey
 ALTER TABLE "agencies" ADD CONSTRAINT "fk_agencies__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- agency_payment_methods
-ALTER TABLE "agency_payment_methods" ADD CONSTRAINT "fk_agency_payment_methods__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- audit_logs
+-- AddForeignKey
 ALTER TABLE "audit_logs" ADD CONSTRAINT "fk_audit_logs__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- availability
+-- AddForeignKey
 ALTER TABLE "availability" ADD CONSTRAINT "fk_availability__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- chat_participants
+-- AddForeignKey
 ALTER TABLE "chat_participants" ADD CONSTRAINT "fk_chat_participants__chat_id__chats" FOREIGN KEY ("chat_id") REFERENCES "chats"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "chat_participants" ADD CONSTRAINT "fk_chat_participants__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- chats
+-- AddForeignKey
 ALTER TABLE "chats" ADD CONSTRAINT "fk_chats__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "chats" ADD CONSTRAINT "fk_chats__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- documents
+-- AddForeignKey
 ALTER TABLE "documents" ADD CONSTRAINT "fk_documents__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "documents" ADD CONSTRAINT "fk_documents__verified_by__users" FOREIGN KEY ("verified_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- emergency_contacts
+-- AddForeignKey
 ALTER TABLE "emergency_contacts" ADD CONSTRAINT "fk_emergency_contacts__location_id__locations" FOREIGN KEY ("location_id") REFERENCES "locations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- emergency_material_items
-ALTER TABLE "emergency_material_items" ADD CONSTRAINT "fk_material_items__material_id__emergency_materials" FOREIGN KEY ("material_id") REFERENCES "emergency_materials"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- expenses
+-- AddForeignKey
 ALTER TABLE "expenses" ADD CONSTRAINT "expenses_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "expense_categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "expenses" ADD CONSTRAINT "expenses_guide_id_fkey" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "expenses" ADD CONSTRAINT "expenses_reservation_id_fkey" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "expenses" ADD CONSTRAINT "expenses_tour_id_fkey" FOREIGN KEY ("tour_id") REFERENCES "tours"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
--- feedback
+-- AddForeignKey
 ALTER TABLE "feedback" ADD CONSTRAINT "fk_feedback__responded_by__users" FOREIGN KEY ("responded_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "feedback" ADD CONSTRAINT "fk_feedback__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- financial_calculations
+-- AddForeignKey
 ALTER TABLE "financial_calculations" ADD CONSTRAINT "financial_calculations_guide_id_fkey" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- guide_locations
+-- AddForeignKey
 ALTER TABLE "guide_locations" ADD CONSTRAINT "fk_guide_locations__active_tour_id__active_tours" FOREIGN KEY ("active_tour_id") REFERENCES "active_tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- guide_pricing
-ALTER TABLE "guide_pricing" ADD CONSTRAINT "guide_pricing_guide_id_fkey" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- guides
+-- AddForeignKey
 ALTER TABLE "guides" ADD CONSTRAINT "fk_guides__agency_id__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "guides" ADD CONSTRAINT "fk_guides__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- income
-ALTER TABLE "income" ADD CONSTRAINT "fk_income__service_request_id__service_requests" FOREIGN KEY ("service_request_id") REFERENCES "service_requests"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+-- AddForeignKey
 ALTER TABLE "income" ADD CONSTRAINT "income_guide_id_fkey" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "income" ADD CONSTRAINT "income_reservation_id_fkey" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "income" ADD CONSTRAINT "income_tour_id_fkey" FOREIGN KEY ("tour_id") REFERENCES "tours"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "income" ADD CONSTRAINT "income_type_id_fkey" FOREIGN KEY ("type_id") REFERENCES "income_types"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- locations
+-- AddForeignKey
 ALTER TABLE "locations" ADD CONSTRAINT "fk_locations__parent_id__locations" FOREIGN KEY ("parent_id") REFERENCES "locations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- messages
+-- AddForeignKey
+ALTER TABLE "message_attachments" ADD CONSTRAINT "fk_message_attachments__message_id__messages" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "messages" ADD CONSTRAINT "fk_messages__chat_id__chats" FOREIGN KEY ("chat_id") REFERENCES "chats"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "messages" ADD CONSTRAINT "fk_messages__reply_to_id__messages" FOREIGN KEY ("reply_to_id") REFERENCES "messages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "messages" ADD CONSTRAINT "fk_messages__sender_id__users" FOREIGN KEY ("sender_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- monitoring_alerts
-ALTER TABLE "monitoring_alerts" ADD CONSTRAINT "fk_monitoring_alerts__active_tour_id__active_tours" FOREIGN KEY ("active_tour_id") REFERENCES "active_tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "monitoring_alerts" ADD CONSTRAINT "fk_monitoring_alerts__acknowledged_by__users" FOREIGN KEY ("acknowledged_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- notification_settings
+-- AddForeignKey
 ALTER TABLE "notification_settings" ADD CONSTRAINT "fk_notification_settings__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- notifications
+-- AddForeignKey
 ALTER TABLE "notifications" ADD CONSTRAINT "fk_notifications__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- personal_events
+-- AddForeignKey
 ALTER TABLE "personal_events" ADD CONSTRAINT "fk_personal_events__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- points_history
+-- AddForeignKey
 ALTER TABLE "points_history" ADD CONSTRAINT "fk_points_history__agency_id__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "points_history" ADD CONSTRAINT "fk_points_history__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- protocol_steps
+-- AddForeignKey
 ALTER TABLE "protocol_steps" ADD CONSTRAINT "fk_protocol_steps__protocol_id__protocols" FOREIGN KEY ("protocol_id") REFERENCES "protocols"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- protocols
+-- AddForeignKey
 ALTER TABLE "protocols" ADD CONSTRAINT "fk_protocols__approved_by__users" FOREIGN KEY ("approved_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "protocols" ADD CONSTRAINT "fk_protocols__category_id__emergency_categories" FOREIGN KEY ("category_id") REFERENCES "emergency_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "protocols" ADD CONSTRAINT "fk_protocols__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- provider_services
+-- AddForeignKey
+ALTER TABLE "provider_assignments" ADD CONSTRAINT "fk_provider_assignments__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "provider_assignments" ADD CONSTRAINT "fk_provider_assignments__provider_id__providers" FOREIGN KEY ("provider_id") REFERENCES "providers"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "provider_assignments" ADD CONSTRAINT "fk_provider_assignments__provider_service_id__provider_services" FOREIGN KEY ("provider_service_id") REFERENCES "provider_services"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "provider_assignments" ADD CONSTRAINT "fk_provider_assignments__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "provider_services" ADD CONSTRAINT "fk_provider_services__provider_id__providers" FOREIGN KEY ("provider_id") REFERENCES "providers"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- providers
+-- AddForeignKey
 ALTER TABLE "providers" ADD CONSTRAINT "fk_providers__category_id__provider_categories" FOREIGN KEY ("category_id") REFERENCES "provider_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "providers" ADD CONSTRAINT "fk_providers__location_id__locations" FOREIGN KEY ("location_id") REFERENCES "locations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- ratings
+-- AddForeignKey
 ALTER TABLE "ratings" ADD CONSTRAINT "fk_ratings__rated_by_id__users" FOREIGN KEY ("rated_by_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "ratings" ADD CONSTRAINT "fk_ratings__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- redemptions
+-- AddForeignKey
 ALTER TABLE "redemptions" ADD CONSTRAINT "fk_redemptions__agency_id__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "redemptions" ADD CONSTRAINT "fk_redemptions__approved_by__users" FOREIGN KEY ("approved_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "redemptions" ADD CONSTRAINT "fk_redemptions__reward_id__rewards" FOREIGN KEY ("reward_id") REFERENCES "rewards"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- reservation_groups
-ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-
--- reservations
+-- AddForeignKey
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations__agency_id__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations__tour_id__tours" FOREIGN KEY ("tour_id") REFERENCES "tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- reviews
+-- AddForeignKey
 ALTER TABLE "reviews" ADD CONSTRAINT "fk_reviews__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "reviews" ADD CONSTRAINT "fk_reviews__reviewer_id__users" FOREIGN KEY ("reviewer_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "reviews" ADD CONSTRAINT "fk_reviews__service_request_id__service_requests" FOREIGN KEY ("service_request_id") REFERENCES "service_requests"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- rewards
+-- AddForeignKey
 ALTER TABLE "rewards" ADD CONSTRAINT "fk_rewards__category_id__reward_categories" FOREIGN KEY ("category_id") REFERENCES "reward_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- role_permissions
+-- AddForeignKey
 ALTER TABLE "role_permissions" ADD CONSTRAINT "fk_role_permissions__permission_id__permissions" FOREIGN KEY ("permission_id") REFERENCES "permissions"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "role_permissions" ADD CONSTRAINT "fk_role_permissions__role_id__roles" FOREIGN KEY ("role_id") REFERENCES "roles"("role_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- service_area_ratings
+-- AddForeignKey
 ALTER TABLE "service_area_ratings" ADD CONSTRAINT "fk_service_area_ratings__rated_by_id__users" FOREIGN KEY ("rated_by_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "service_area_ratings" ADD CONSTRAINT "fk_service_area_ratings__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- service_requests
+-- AddForeignKey
 ALTER TABLE "service_requests" ADD CONSTRAINT "fk_service_requests__agency_id__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "service_requests" ADD CONSTRAINT "fk_service_requests__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "service_requests" ADD CONSTRAINT "service_requests_calendar_event_id_fkey" FOREIGN KEY ("calendar_event_id") REFERENCES "personal_events"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "service_requests" ADD CONSTRAINT "service_requests_pricing_id_fkey" FOREIGN KEY ("pricing_id") REFERENCES "guide_pricing"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- settings
+-- AddForeignKey
+ALTER TABLE "service_requests" ADD CONSTRAINT "fk_service_requests__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "settings" ADD CONSTRAINT "fk_settings__updated_by__users" FOREIGN KEY ("updated_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- staff_evaluations
+-- AddForeignKey
 ALTER TABLE "staff_evaluations" ADD CONSTRAINT "fk_staff_evaluations__evaluator_id__users" FOREIGN KEY ("evaluator_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "staff_evaluations" ADD CONSTRAINT "fk_staff_evaluations__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- suggestions
+-- AddForeignKey
 ALTER TABLE "suggestions" ADD CONSTRAINT "fk_suggestions__created_by__users" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "suggestions" ADD CONSTRAINT "fk_suggestions__feedback_id__feedback" FOREIGN KEY ("feedback_id") REFERENCES "feedback"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- time_slots
+-- AddForeignKey
 ALTER TABLE "time_slots" ADD CONSTRAINT "fk_time_slots__availability_id__availability" FOREIGN KEY ("availability_id") REFERENCES "availability"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "time_slots" ADD CONSTRAINT "fk_time_slots__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- tour_assignments
+-- AddForeignKey
 ALTER TABLE "tour_assignments" ADD CONSTRAINT "fk_tour_assignments__assigned_by__users" FOREIGN KEY ("assigned_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_assignments" ADD CONSTRAINT "fk_tour_assignments__driver_id__drivers" FOREIGN KEY ("driver_id") REFERENCES "drivers"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_assignments" ADD CONSTRAINT "fk_tour_assignments__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_assignments" ADD CONSTRAINT "fk_tour_assignments__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_assignments" ADD CONSTRAINT "fk_tour_assignments__vehicle_id__vehicles" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- tour_incidents
-ALTER TABLE "tour_incidents" ADD CONSTRAINT "fk_tour_incidents__active_tour_id__active_tours" FOREIGN KEY ("active_tour_id") REFERENCES "active_tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "tour_incidents" ADD CONSTRAINT "fk_tour_incidents__reported_by__users" FOREIGN KEY ("reported_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "tour_incidents" ADD CONSTRAINT "fk_tour_incidents__tour_stop_id__tour_stops" FOREIGN KEY ("tour_stop_id") REFERENCES "tour_stops"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- tour_photos
+-- AddForeignKey
 ALTER TABLE "tour_photos" ADD CONSTRAINT "fk_tour_photos__active_tour_id__active_tours" FOREIGN KEY ("active_tour_id") REFERENCES "active_tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_photos" ADD CONSTRAINT "fk_tour_photos__taken_by__users" FOREIGN KEY ("taken_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_photos" ADD CONSTRAINT "fk_tour_photos__tour_stop_id__tour_stops" FOREIGN KEY ("tour_stop_id") REFERENCES "tour_stops"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- tour_progress
+-- AddForeignKey
 ALTER TABLE "tour_progress" ADD CONSTRAINT "fk_tour_progress__active_tour_id__active_tours" FOREIGN KEY ("active_tour_id") REFERENCES "active_tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tour_progress" ADD CONSTRAINT "fk_tour_progress__tour_stop_id__tour_stops" FOREIGN KEY ("tour_stop_id") REFERENCES "tour_stops"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- tour_stops
+-- AddForeignKey
 ALTER TABLE "tour_stops" ADD CONSTRAINT "fk_tour_stops__tour_id__tours" FOREIGN KEY ("tour_id") REFERENCES "tours"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- tourist_ratings
+-- AddForeignKey
 ALTER TABLE "tourist_ratings" ADD CONSTRAINT "fk_tourist_ratings__rated_by_id__users" FOREIGN KEY ("rated_by_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "tourist_ratings" ADD CONSTRAINT "fk_tourist_ratings__reservation_id__reservations" FOREIGN KEY ("reservation_id") REFERENCES "reservations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- user_favorites
+-- AddForeignKey
 ALTER TABLE "user_favorites" ADD CONSTRAINT "user_favorites_guide_id_fkey" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
+-- AddForeignKey
 ALTER TABLE "user_favorites" ADD CONSTRAINT "user_favorites_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
--- user_permissions
-ALTER TABLE "user_permissions" ADD CONSTRAINT "fk_user_permissions__permission_id__permissions" FOREIGN KEY ("permission_id") REFERENCES "permissions"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-ALTER TABLE "user_permissions" ADD CONSTRAINT "fk_user_permissions__user_id__users" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-ALTER TABLE "user_permissions" ADD CONSTRAINT "fk_user_permissions__granted_by__users" FOREIGN KEY ("granted_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- user_terms_acceptance
-ALTER TABLE "user_terms_acceptance" ADD CONSTRAINT "fk_user_terms__terms_id" FOREIGN KEY ("terms_id") REFERENCES "terms_and_conditions"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "user_terms_acceptance" ADD CONSTRAINT "fk_user_terms__user_id" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-
--- users
+-- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "fk_users__role_id__roles" FOREIGN KEY ("role_id") REFERENCES "roles"("role_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- vehicle_documents
+-- AddForeignKey
 ALTER TABLE "vehicle_documents" ADD CONSTRAINT "fk_vehicle_documents__vehicle_id__vehicles" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
--- working_hours
+-- AddForeignKey
 ALTER TABLE "working_hours" ADD CONSTRAINT "fk_working_hours__guide_id__guides" FOREIGN KEY ("guide_id") REFERENCES "guides"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
+-- AddForeignKey
+ALTER TABLE "user_terms_acceptance" ADD CONSTRAINT "fk_user_terms__terms_id" FOREIGN KEY ("terms_id") REFERENCES "terms_and_conditions"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- AddForeignKey
+ALTER TABLE "user_terms_acceptance" ADD CONSTRAINT "fk_user_terms__user_id" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+-- CreateTable
+CREATE TABLE "languages" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "code" VARCHAR(10) NOT NULL,
+    "name" VARCHAR(100) NOT NULL,
+    "native_name" VARCHAR(100) NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "sort_order" SMALLINT NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6),
+
+    CONSTRAINT "languages_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "emergency_material_items" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "material_id" UUID NOT NULL,
+    "name" VARCHAR(200) NOT NULL,
+    "order_index" SMALLINT DEFAULT 0,
+    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "emergency_material_items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "agency_payment_methods" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "agency_id" UUID NOT NULL,
+    "type" VARCHAR(30) NOT NULL,
+    "label" VARCHAR(100),
+    "bank" VARCHAR(100),
+    "account_number" VARCHAR(30),
+    "cci" VARCHAR(25),
+    "card_number" VARCHAR(20),
+    "phone_number" VARCHAR(20),
+    "holder_name" VARCHAR(200),
+    "currency" VARCHAR(3) DEFAULT 'PEN',
+    "account_type" VARCHAR(20),
+    "card_type" VARCHAR(20),
+    "expiry_date" VARCHAR(10),
+    "description" TEXT,
+    "is_main" BOOLEAN DEFAULT false,
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" SMALLINT DEFAULT 0,
+    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "agency_payment_methods_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "system_payment_methods" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "type" VARCHAR(30) NOT NULL,
+    "label" VARCHAR(100),
+    "bank" VARCHAR(100),
+    "account_number" VARCHAR(30),
+    "cci" VARCHAR(25),
+    "card_number" VARCHAR(20),
+    "phone_number" VARCHAR(20),
+    "holder_name" VARCHAR(200),
+    "currency" VARCHAR(3) DEFAULT 'PEN',
+    "account_type" VARCHAR(20),
+    "card_type" VARCHAR(20),
+    "expiry_date" VARCHAR(10),
+    "description" TEXT,
+    "is_main" BOOLEAN DEFAULT false,
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" SMALLINT DEFAULT 0,
+    "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "system_payment_methods_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "idx_guides__status" ON "guides"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "languages_code_key" ON "languages"("code");
+
+-- CreateIndex
+CREATE INDEX "idx_languages__code" ON "languages"("code");
+
+-- CreateIndex
+CREATE INDEX "idx_languages__is_active" ON "languages"("is_active");
+
+-- CreateIndex
+CREATE INDEX "idx_languages__sort_order" ON "languages"("sort_order");
+
+-- CreateIndex
+CREATE INDEX "idx_emergency_material_items__material_id" ON "emergency_material_items"("material_id");
+
+-- CreateIndex
+CREATE INDEX "idx_emergency_material_items__order_index" ON "emergency_material_items"("material_id", "order_index");
+
+-- CreateIndex
+CREATE INDEX "idx_apm__agency_id" ON "agency_payment_methods"("agency_id");
+
+-- CreateIndex
+CREATE INDEX "idx_apm__is_active" ON "agency_payment_methods"("is_active");
+
+-- CreateIndex
+CREATE INDEX "idx_apm__type" ON "agency_payment_methods"("type");
+
+-- CreateIndex
+CREATE INDEX "idx_spm__is_active" ON "system_payment_methods"("is_active");
+
+-- CreateIndex
+CREATE INDEX "idx_spm__type" ON "system_payment_methods"("type");
+
+-- AddForeignKey
+ALTER TABLE "emergency_material_items" ADD CONSTRAINT "fk_material_items__material_id__emergency_materials" FOREIGN KEY ("material_id") REFERENCES "emergency_materials"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "agency_payment_methods" ADD CONSTRAINT "fk_agency_payment_methods__agencies" FOREIGN KEY ("agency_id") REFERENCES "agencies"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
 -- =============================================================================
--- SECCIÓN 4: FUNCIONES Y TRIGGERS
--- Soft Delete sincronizado entre users <-> guides
+-- FUNCIONES Y TRIGGERS - Soft Delete sincronizado entre users <-> guides
 -- =============================================================================
 
 -- CreateFunction: Sincroniza soft delete de guide -> user
@@ -1910,7 +2209,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
 BEGIN
+    -- Verificar si el status cambió a 'deleted'
     IF NEW.status = 'deleted' AND (OLD.status IS NULL OR OLD.status != 'deleted') THEN
+        -- Marcar el usuario asociado como 'deleted'
         UPDATE users
         SET
             status = 'deleted',
@@ -1921,7 +2222,9 @@ BEGIN
 
         RAISE NOTICE 'Usuario % marcado como deleted debido a eliminación del guide %', NEW.user_id, NEW.id;
 
+    -- Verificar si el status cambió de 'deleted' a otro estado (reactivación)
     ELSIF OLD.status = 'deleted' AND NEW.status != 'deleted' THEN
+        -- Reactivar el usuario asociado
         UPDATE users
         SET
             status = NEW.status,
@@ -1943,7 +2246,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
 BEGIN
+    -- Verificar si el status cambió a 'deleted'
     IF NEW.status = 'deleted' AND (OLD.status IS NULL OR OLD.status != 'deleted') THEN
+        -- Marcar el guide asociado como 'deleted' (si existe)
         UPDATE guides
         SET
             status = 'deleted',
@@ -1955,7 +2260,9 @@ BEGIN
             RAISE NOTICE 'Guide asociado al usuario % marcado como deleted', NEW.id;
         END IF;
 
+    -- Verificar si el status cambió de 'deleted' a otro estado (reactivación)
     ELSIF OLD.status = 'deleted' AND NEW.status != 'deleted' THEN
+        -- Reactivar el guide asociado (si existe)
         UPDATE guides
         SET
             status = 'active',
@@ -1985,3 +2292,4 @@ CREATE TRIGGER trigger_sync_user_to_guide_soft_delete
     FOR EACH ROW
     WHEN (((old.status)::text IS DISTINCT FROM (new.status)::text))
     EXECUTE FUNCTION sync_user_to_guide_soft_delete();
+

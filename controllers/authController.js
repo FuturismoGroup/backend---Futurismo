@@ -524,13 +524,8 @@ const registerFreelancer = async (req, res) => {
       city
     } = req.body;
 
-    // Foto subida por multer (si existe) — se persiste en Wasabi
-    let photo = null;
-    if (req.file) {
-      const { uploadGuidePhotoToStorage } = require('../middlewares/uploadGuidePhoto');
-      const uploaded = await uploadGuidePhotoToStorage(req.file);
-      photo = uploaded.url;
-    }
+    // Foto subida por multer (si existe)
+    const photo = req.file ? `/uploads/guias-freelance/${req.file.filename}` : null;
 
     // Validaciones obligatorias
     if (!firstName || !lastName || !email || !phone || !documentType || !documentNumber || !password) {

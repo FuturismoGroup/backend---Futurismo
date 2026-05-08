@@ -1190,32 +1190,71 @@ const getChatContacts = async (req, res) => {
       ]
     } : {};
 
-    // Admin y Agency pueden ver guías
+    // Admin ve todos los guías; Agency solo los guías asignados (planta + freelance contratados)
     if (userRole === 'admin' || userRole === 'agency') {
-      const guides = await prisma.guides.findMany({
-        where: {
-          users: {
-            status: 'active',
-            id: { not: userId },
-            ...userSearchFilter
-          }
-        },
-        include: {
-          users: {
-            select: { id: true, first_name: true, last_name: true, email: true, profile_photo: true, status: true }
-          }
-        },
-        orderBy: { created_at: 'desc' }
-      });
+      const guideWhere = {
+        users: {
+          status: 'active',
+          id: { not: userId },
+          ...userSearchFilter
+        }
+      };
 
-      contacts.guides = guides.map(g => ({
-        id: g.users.id,
-        name: `${g.users.first_name || ''} ${g.users.last_name || ''}`.trim() || 'Sin nombre',
-        email: g.users.email,
-        avatar: g.users.profile_photo || null,
-        role: 'guide',
-        guideType: g.guide_type
-      }));
+      let shouldQueryGuides = true;
+
+      if (userRole === 'agency') {
+        const agencyId = req.user.agencyId || req.user.agency?.id;
+
+        if (!agencyId) {
+          shouldQueryGuides = false;
+        } else {
+          // Guías asignados: planta (guides.agency_id) + los que tienen
+          // service_requests o reservations con esta agencia
+          const [serviceRequestGuides, reservationGuides] = await Promise.all([
+            prisma.service_requests.findMany({
+              where: { agency_id: agencyId },
+              select: { guide_id: true },
+              distinct: ['guide_id']
+            }),
+            prisma.reservations.findMany({
+              where: { agency_id: agencyId, guide_id: { not: null } },
+              select: { guide_id: true },
+              distinct: ['guide_id']
+            })
+          ]);
+
+          const assignedGuideIds = Array.from(new Set([
+            ...serviceRequestGuides.map(s => s.guide_id).filter(Boolean),
+            ...reservationGuides.map(r => r.guide_id).filter(Boolean)
+          ]));
+
+          guideWhere.OR = [
+            { agency_id: agencyId },
+            ...(assignedGuideIds.length > 0 ? [{ id: { in: assignedGuideIds } }] : [])
+          ];
+        }
+      }
+
+      if (shouldQueryGuides) {
+        const guides = await prisma.guides.findMany({
+          where: guideWhere,
+          include: {
+            users: {
+              select: { id: true, first_name: true, last_name: true, email: true, profile_photo: true, status: true }
+            }
+          },
+          orderBy: { created_at: 'desc' }
+        });
+
+        contacts.guides = guides.map(g => ({
+          id: g.users.id,
+          name: `${g.users.first_name || ''} ${g.users.last_name || ''}`.trim() || 'Sin nombre',
+          email: g.users.email,
+          avatar: g.users.profile_photo || null,
+          role: 'guide',
+          guideType: g.guide_type
+        }));
+      }
     }
 
     // Admin puede ver agencias

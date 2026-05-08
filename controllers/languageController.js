@@ -247,8 +247,9 @@ const updateLanguage = async (req, res) => {
     }
 
     // Si se cambia el código, validar formato y duplicados
-    if (code && code.trim() !== existing.code) {
-      if (!/^[a-z]{2}$/i.test(code.trim())) {
+    const newCode = code ? code.trim().toLowerCase() : null;
+    if (newCode && newCode !== existing.code) {
+      if (!/^[a-z]{2}$/.test(newCode)) {
         return res.status(400).json({
           success: false,
           error: 'Bad Request',
@@ -256,8 +257,8 @@ const updateLanguage = async (req, res) => {
         });
       }
 
-      const duplicateCode = await prisma.languages.findUnique({
-        where: { code: code.trim().toLowerCase() }
+      const duplicateCode = await prisma.languages.findFirst({
+        where: { code: newCode, id: { not: id } }
       });
 
       if (duplicateCode) {
@@ -291,7 +292,11 @@ const updateLanguage = async (req, res) => {
     const data = {};
     if (code !== undefined) data.code = code.trim().toLowerCase();
     if (name !== undefined) data.name = name.trim();
-    if (nativeName !== undefined) data.native_name = nativeName ? nativeName.trim() : null;
+    if (nativeName !== undefined) {
+      const trimmed = nativeName ? nativeName.trim() : '';
+      // native_name es NOT NULL: si viene vacío, usar el name nuevo o el actual
+      data.native_name = trimmed || (name ? name.trim() : existing.name);
+    }
 
     const language = await prisma.languages.update({
       where: { id },

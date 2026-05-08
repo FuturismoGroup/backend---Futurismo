@@ -1133,6 +1133,42 @@ const getGuideTours = async (req, res) => {
       orderBy: { date: 'asc' }
     });
 
+    // Auto-reparar reservas en 'in_progress' o 'completed' que quedaron sin
+    // registro en active_tours (p.ej. por updates directos a la reserva o
+    // fallos previos de la transaccion). Sin esto GuideTourView arroja
+    // "Este tour no ha sido iniciado" aunque la reserva ya este iniciada.
+    const needsActiveTour = reservations.filter(r =>
+      !r.active_tours && (r.status === 'in_progress' || r.status === 'completed')
+    );
+    if (needsActiveTour.length > 0) {
+      const now = new Date();
+      const created = await Promise.all(
+        needsActiveTour.map(r =>
+          prisma.active_tours.create({
+            data: {
+              reservation_id: r.id,
+              guide_id: guide.id,
+              status: r.status === 'completed' ? 'completed' : 'in_progress',
+              current_stop_index: 0,
+              started_at: now,
+              ended_at: r.status === 'completed' ? now : null
+            },
+            select: { id: true, status: true, started_at: true, reservation_id: true }
+          }).catch(err => {
+            console.warn(`[getGuideTours] No se pudo backfill active_tour para reserva ${r.id}:`, err.message);
+            return null;
+          })
+        )
+      );
+      const byReservation = new Map(created.filter(Boolean).map(at => [at.reservation_id, at]));
+      reservations.forEach(r => {
+        if (!r.active_tours && byReservation.has(r.id)) {
+          const at = byReservation.get(r.id);
+          r.active_tours = { id: at.id, status: at.status, started_at: at.started_at };
+        }
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: reservations.map(r => ({

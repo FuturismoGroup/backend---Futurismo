@@ -60,7 +60,16 @@ const listProtocols = async (req, res) => {
       status: p.status,
       priority: p.priority,
       icon: p.icon,
-      contacts: (p.contacts || []).map(c => typeof c === 'string' ? JSON.parse(c) : c),
+      contacts: (p.contacts || []).map(c => {
+        if (typeof c !== 'string') return c;
+        try {
+          return JSON.parse(c);
+        } catch (e) {
+          // Si el contacto no es JSON valido, devolverlo tal cual.
+          // Antes un solo contacto malformado tiraba todo el listProtocols con 500.
+          return c;
+        }
+      }),
       materialIds: p.material_ids || [],
       createdById: p.created_by,
       approvedById: p.approved_by,
@@ -152,7 +161,10 @@ const getProtocol = async (req, res) => {
         status: protocol.status,
         priority: protocol.priority,
         icon: protocol.icon,
-        contacts: (protocol.contacts || []).map(c => typeof c === 'string' ? JSON.parse(c) : c),
+        contacts: (protocol.contacts || []).map(c => {
+          if (typeof c !== 'string') return c;
+          try { return JSON.parse(c); } catch (e) { return c; }
+        }),
         materialIds: protocol.material_ids || [],
         createdBy: protocol.users_protocols_created_byTousers ? {
           id: protocol.users_protocols_created_byTousers.id,
@@ -294,7 +306,10 @@ const createProtocol = async (req, res) => {
         status: fullProtocol.status,
         priority: fullProtocol.priority,
         icon: fullProtocol.icon,
-        contacts: (fullProtocol.contacts || []).map(c => typeof c === 'string' ? JSON.parse(c) : c),
+        contacts: (fullProtocol.contacts || []).map(c => {
+          if (typeof c !== 'string') return c;
+          try { return JSON.parse(c); } catch (e) { return c; }
+        }),
         materialIds: fullProtocol.material_ids || [],
         steps: fullProtocol.protocol_steps.map(s => ({
           id: s.id,
@@ -437,7 +452,10 @@ const updateProtocol = async (req, res) => {
         status: updatedProtocol.status,
         priority: updatedProtocol.priority,
         icon: updatedProtocol.icon,
-        contacts: (updatedProtocol.contacts || []).map(c => typeof c === 'string' ? JSON.parse(c) : c),
+        contacts: (updatedProtocol.contacts || []).map(c => {
+          if (typeof c !== 'string') return c;
+          try { return JSON.parse(c); } catch (e) { return c; }
+        }),
         materialIds: updatedProtocol.material_ids || [],
         steps: updatedProtocol.protocol_steps.map(s => ({
           id: s.id,

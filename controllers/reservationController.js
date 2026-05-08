@@ -1268,8 +1268,10 @@ const updateReservationStatus = async (req, res) => {
         });
       }
 
-      // Guías solo pueden: confirmed → in_progress (iniciar) o in_progress → completed (finalizar)
+      // Guías pueden: pending|confirmed → in_progress (iniciar), in_progress → completed (finalizar)
+      // Iniciar desde 'pending' auto-confirma la reserva implícitamente (admin ya asignó al guía)
       const guideAllowedTransitions = {
+        'pending': ['in_progress'],
         'confirmed': ['in_progress'],
         'in_progress': ['completed']
       };
@@ -1277,7 +1279,7 @@ const updateReservationStatus = async (req, res) => {
       if (!guideAllowedTransitions[existingReservation.status]?.includes(status)) {
         return res.status(403).json({
           error: 'Forbidden',
-          message: `Como guía, solo puedes iniciar tours confirmados o completar tours en progreso`
+          message: `Como guía, solo puedes iniciar tours pendientes o confirmados, o completar tours en progreso`
         });
       }
     }
@@ -1294,7 +1296,7 @@ const updateReservationStatus = async (req, res) => {
     // Reglas de transiciÃ³n de estado (lÃ­neas 447-450)
     const currentStatus = existingReservation.status;
     const allowedTransitions = {
-      'pending': ['confirmed', 'cancelled'],
+      'pending': ['confirmed', 'in_progress', 'cancelled'],
       'confirmed': ['in_progress', 'cancelled'],
       'in_progress': ['completed', 'cancelled'],
       'cancelled': [],  // Estado final
@@ -1324,8 +1326,10 @@ const updateReservationStatus = async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       let pointsAwarded = existingReservation.points_awarded || 0;
 
-      // Al confirmar reserva de agencia, calcular y asignar puntos desde points_config
-      if (status === 'confirmed' && existingReservation.agency_id) {
+      // Al confirmar reserva de agencia (o saltar pending→in_progress), calcular y asignar puntos
+      const isConfirmingTransition = status === 'confirmed' ||
+        (status === 'in_progress' && currentStatus === 'pending');
+      if (isConfirmingTransition && existingReservation.agency_id && !existingReservation.points_awarded) {
         const pointsConfig = await getPointsConfigFromDB(tx);
         const pointsToAward = Math.floor(parseFloat(existingReservation.total_amount) * pointsConfig.pointsPerSol);
 

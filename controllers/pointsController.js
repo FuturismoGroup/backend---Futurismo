@@ -596,12 +596,11 @@ const createReward = async (req, res) => {
     // Resolver campos (el frontend puede enviar diferentes nombres)
     const finalPoints = pointsCost || points;
 
-    // Si hay archivo subido, persistirlo en Wasabi; sino usar URL proporcionada
+    // Si hay archivo subido, usar la ruta del archivo; sino usar URL proporcionada
     let finalImage = null;
     if (req.file) {
-      const { uploadRewardImageToStorage } = require('../middlewares/uploadReward');
-      const uploaded = await uploadRewardImageToStorage(req.file);
-      finalImage = uploaded.url;
+      // Construir URL relativa para servir desde el backend
+      finalImage = `/uploads/rewards/${req.file.filename}`;
     } else {
       finalImage = imageUrl || image || null;
     }
@@ -717,12 +716,10 @@ const updateReward = async (req, res) => {
     // Resolver campos
     const finalPoints = pointsCost || points;
 
-    // Si hay archivo subido, persistirlo en Wasabi; sino mantener existente o usar URL
+    // Si hay archivo subido, usar la ruta del archivo; sino mantener existente o usar URL
     let finalImage;
     if (req.file) {
-      const { uploadRewardImageToStorage } = require('../middlewares/uploadReward');
-      const uploaded = await uploadRewardImageToStorage(req.file);
-      finalImage = uploaded.url;
+      finalImage = `/uploads/rewards/${req.file.filename}`;
     } else if (imageUrl !== undefined) {
       finalImage = imageUrl;
     } else if (image !== undefined) {

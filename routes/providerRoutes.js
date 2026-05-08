@@ -260,12 +260,12 @@ router.patch(
  * CheckProviderAvailability
  * POST /api/providers/:id/check-availability
  * Verifica disponibilidad de un proveedor
- * Roles permitidos: Admin, Agency
+ * Roles permitidos: Admin (guías son solo-lectura en este módulo)
  */
 router.post(
   '/:id/check-availability',
   authenticate,
-  authorize(['admin', 'guide']),
+  authorize(['admin']),
   providerController.checkProviderAvailability
 );
 
@@ -273,12 +273,12 @@ router.post(
  * RateProvider
  * POST /api/providers/:id/rate
  * Calificar un proveedor
- * Roles permitidos: Admin, Agency
+ * Roles permitidos: Admin (guías son solo-lectura en este módulo)
  */
 router.post(
   '/:id/rate',
   authenticate,
-  authorize(['admin', 'guide']),
+  authorize(['admin']),
   providerController.rateProvider
 );
 

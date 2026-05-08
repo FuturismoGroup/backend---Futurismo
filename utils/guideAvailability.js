@@ -88,7 +88,7 @@ async function checkGuideAvailabilityForDate(prisma, guideId, serviceDate, exclu
   const dayOfWeek = dayStart.getUTCDay(); // 0=Sunday, 1=Monday, ...
   const workingHour = await prisma.working_hours.findUnique({
     where: {
-      working_hours_guide_day_unique: {
+      guide_id_day_of_week: {
         guide_id: guideId,
         day_of_week: dayOfWeek
       }

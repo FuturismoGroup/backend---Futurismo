@@ -101,6 +101,14 @@ const initializeSocket = (httpServer) => {
     // Unirse a room personal para notificaciones
     socket.join(`user:${userId}`);
 
+    // Enviar al recien conectado la lista actual de usuarios online
+    // (sin este snapshot, un usuario solo se entera de quienes se conecten DESPUES,
+    // por lo que el admin nunca ve como online a un guia que ya estaba conectado).
+    socket.emit('presence:initial', {
+      onlineUserIds: Array.from(onlineUsers.keys()).filter(uid => uid !== userId),
+      timestamp: new Date().toISOString()
+    });
+
     // Notificar a otros que el usuario esta online
     socket.broadcast.emit('user:online', {
       userId,

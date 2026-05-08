@@ -8,19 +8,19 @@ datasource db {
 }
 
 model active_tours {
-  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservation_id        String              @unique @db.Uuid
-  guide_id              String?             @db.Uuid
-  status                String              @default("not_started") @db.VarChar(20)
-  current_stop_index    Int                 @default(0) @db.SmallInt
-  started_at            DateTime?           @db.Timestamptz(6)
-  ended_at              DateTime?           @db.Timestamptz(6)
-  last_location_update  DateTime?           @db.Timestamptz(6)
-  emergency_protocol_id String?             @db.Uuid
-  created_at            DateTime            @default(now()) @db.Timestamptz(6)
-  protocols             protocols?          @relation(fields: [emergency_protocol_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__emergency_protocol_id__protocols")
-  guides                guides?             @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__guide_id__guides")
-  reservations          reservations        @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__reservation_id__reservations")
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id        String            @unique @db.Uuid
+  guide_id              String?           @db.Uuid
+  status                String            @default("not_started") @db.VarChar(20)
+  current_stop_index    Int               @default(0) @db.SmallInt
+  started_at            DateTime?         @db.Timestamptz(6)
+  ended_at              DateTime?         @db.Timestamptz(6)
+  last_location_update  DateTime?         @db.Timestamptz(6)
+  emergency_protocol_id String?           @db.Uuid
+  created_at            DateTime          @default(now()) @db.Timestamptz(6)
+  protocols             protocols?        @relation(fields: [emergency_protocol_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__emergency_protocol_id__protocols")
+  guides                guides?           @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__guide_id__guides")
+  reservations          reservations      @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__reservation_id__reservations")
   guide_locations       guide_locations[]
   monitoring_alerts     monitoring_alerts[]
   tour_incidents        tour_incidents[]
@@ -654,32 +654,31 @@ model protocols {
 }
 
 model provider_categories {
-  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String      @unique(map: "idx_provider_categories__name") @db.VarChar(100)
-  description String?
-  icon        String?     @db.VarChar(50)
-  color       String?     @db.VarChar(20)
-  is_active   Boolean     @default(true)
-  created_at  DateTime    @default(now()) @db.Timestamptz(6)
-  providers   providers[]
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String              @unique(map: "idx_provider_categories__name") @db.VarChar(100)
+  description       String?
+  icon              String?             @db.VarChar(50)
+  color             String?             @db.VarChar(20)
+  is_active         Boolean             @default(true)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  provider_services provider_services[]
+  providers         providers[]
 }
 
 model provider_services {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  provider_id      String    @db.Uuid
-  name             String    @db.VarChar(200)
-  description      String?
-  service_type     String    @db.VarChar(50)
-  price            Decimal?  @db.Decimal(10, 2)
-  price_type       String?   @default("per_person") @db.VarChar(30)
-  duration_minutes Int?
-  max_capacity     Int?
-  is_active        Boolean   @default(true)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  providers        providers @relation(fields: [provider_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_provider_services__provider_id__providers")
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String              @db.VarChar(200)
+  description         String?
+  service_type        String              @db.VarChar(50)
+  duration_minutes    Int?
+  max_capacity        Int?
+  is_active           Boolean             @default(true)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  category_id         String              @db.Uuid
+  provider_categories provider_categories @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_provider_services__category_id__provider_categories")
 
-  @@index([provider_id], map: "idx_provider_services__provider_id")
   @@index([service_type], map: "idx_provider_services__service_type")
+  @@index([category_id], map: "idx_provider_services__category_id")
 }
 
 model providers {
@@ -695,16 +694,12 @@ model providers {
   description         String?
   logo_url            String?
   capacity            Int?
-  price_type          String?             @db.VarChar(30)
-  base_price          Decimal?            @db.Decimal(10, 2)
-  currency            String              @default("USD") @db.VarChar(3)
   status              String              @default("active") @db.VarChar(20)
   created_at          DateTime            @default(now()) @db.Timestamptz(6)
   updated_at          DateTime            @default(now()) @db.Timestamptz(6)
   observations        String?
   provider_categories provider_categories @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_providers__category_id__provider_categories")
   locations           locations?          @relation(fields: [location_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_providers__location_id__locations")
-  provider_services   provider_services[]
 
   @@index([category_id], map: "idx_providers__category_id")
   @@index([location_id], map: "idx_providers__location_id")
@@ -1120,17 +1115,17 @@ model tour_progress {
 }
 
 model tour_stops {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tour_id        String           @db.Uuid
-  order_num      Int
-  name           String           @db.VarChar(200)
-  duration       Int?
-  description    String?
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_id       String          @db.Uuid
+  order_num     Int
+  name          String          @db.VarChar(200)
+  duration      Int?
+  description   String?
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
   tour_incidents tour_incidents[]
-  tour_photos    tour_photos[]
-  tour_progress  tour_progress[]
-  tours          tours            @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_stops__tour_id__tours")
+  tour_photos   tour_photos[]
+  tour_progress tour_progress[]
+  tours         tours           @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_stops__tour_id__tours")
 
   @@index([tour_id], map: "idx_tour_stops__tour_id")
 }
@@ -1217,58 +1212,58 @@ model user_favorites {
 }
 
 model users {
-  id                                                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  username                                            String                  @unique(map: "idx_users__username") @db.VarChar(50)
-  email                                               String                  @unique(map: "idx_users__email") @db.VarChar(255)
-  password_hash                                       String                  @db.VarChar(255)
-  first_name                                          String                  @db.VarChar(100)
-  last_name                                           String                  @db.VarChar(100)
-  phone                                               String?                 @db.VarChar(20)
-  status                                              String                  @default("active") @db.VarChar(20)
-  document_type                                       String?                 @db.VarChar(20)
-  document_number                                     String?                 @db.VarChar(20)
-  birth_date                                          DateTime?               @db.Date
-  address                                             String?
-  city                                                String?                 @db.VarChar(100)
-  profile_photo                                       String?
-  created_at                                          DateTime                @default(now()) @db.Timestamptz(6)
-  updated_at                                          DateTime                @default(now()) @db.Timestamptz(6)
-  last_login_at                                       DateTime?               @db.Timestamptz(6)
-  deleted_at                                          DateTime?               @db.Timestamptz(6)
-  role_id                                             Int
-  agencies                                            agencies?
-  audit_logs                                          audit_logs[]
-  chat_participants                                   chat_participants[]
-  chats                                               chats[]
-  documents_documents_user_idTousers                  documents[]             @relation("documents_user_idTousers")
-  documents_documents_verified_byTousers              documents[]             @relation("documents_verified_byTousers")
-  feedback_feedback_responded_byTousers               feedback[]              @relation("feedback_responded_byTousers")
-  feedback_feedback_user_idTousers                    feedback[]              @relation("feedback_user_idTousers")
-  guides                                              guides?
-  messages                                            messages[]
-  monitoring_alerts                                   monitoring_alerts[]
-  notification_settings                               notification_settings?
-  notifications                                       notifications[]
-  points_history                                      points_history[]
-  protocols_protocols_approved_byTousers              protocols[]             @relation("protocols_approved_byTousers")
-  protocols_protocols_created_byTousers               protocols[]             @relation("protocols_created_byTousers")
-  ratings                                             ratings[]
-  redemptions                                         redemptions[]
-  reservations                                        reservations[]
-  reviews                                             reviews[]
-  service_area_ratings                                service_area_ratings[]
-  settings                                            settings[]
-  staff_evaluations                                   staff_evaluations[]
-  suggestions                                         suggestions[]
-  tour_assignments                                    tour_assignments[]
-  tour_incidents                                      tour_incidents[]
-  tour_photos                                         tour_photos[]
-  tourist_ratings                                     tourist_ratings[]
-  user_favorites                                      user_favorites[]
+  id                                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username                               String                  @unique(map: "idx_users__username") @db.VarChar(50)
+  email                                  String                  @unique(map: "idx_users__email") @db.VarChar(255)
+  password_hash                          String                  @db.VarChar(255)
+  first_name                             String                  @db.VarChar(100)
+  last_name                              String                  @db.VarChar(100)
+  phone                                  String?                 @db.VarChar(20)
+  status                                 String                  @default("active") @db.VarChar(20)
+  document_type                          String?                 @db.VarChar(20)
+  document_number                        String?                 @db.VarChar(20)
+  birth_date                             DateTime?               @db.Date
+  address                                String?
+  city                                   String?                 @db.VarChar(100)
+  profile_photo                          String?
+  created_at                             DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                             DateTime                @default(now()) @db.Timestamptz(6)
+  last_login_at                          DateTime?               @db.Timestamptz(6)
+  deleted_at                             DateTime?               @db.Timestamptz(6)
+  role_id                                Int
+  agencies                               agencies?
+  audit_logs                             audit_logs[]
+  chat_participants                      chat_participants[]
+  chats                                  chats[]
+  documents_documents_user_idTousers     documents[]             @relation("documents_user_idTousers")
+  documents_documents_verified_byTousers documents[]             @relation("documents_verified_byTousers")
+  feedback_feedback_responded_byTousers  feedback[]              @relation("feedback_responded_byTousers")
+  feedback_feedback_user_idTousers       feedback[]              @relation("feedback_user_idTousers")
+  guides                                 guides?
+  messages                               messages[]
+  monitoring_alerts                      monitoring_alerts[]
+  notification_settings                  notification_settings?
+  notifications                          notifications[]
+  points_history                         points_history[]
+  protocols_protocols_approved_byTousers protocols[]             @relation("protocols_approved_byTousers")
+  protocols_protocols_created_byTousers  protocols[]             @relation("protocols_created_byTousers")
+  ratings                                ratings[]
+  redemptions                            redemptions[]
+  reservations                           reservations[]
+  reviews                                reviews[]
+  service_area_ratings                   service_area_ratings[]
+  settings                               settings[]
+  staff_evaluations                      staff_evaluations[]
+  suggestions                            suggestions[]
+  tour_assignments                       tour_assignments[]
+  tour_incidents                         tour_incidents[]
+  tour_photos                            tour_photos[]
+  tourist_ratings                        tourist_ratings[]
+  user_favorites                         user_favorites[]
   user_permissions_user_permissions_user_idTousers    user_permissions[]      @relation("user_permissions_user_idTousers")
   user_permissions_user_permissions_granted_byTousers user_permissions[]      @relation("user_permissions_granted_byTousers")
-  user_terms_acceptance                               user_terms_acceptance[]
-  roles                                               roles                   @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users__role_id__roles")
+  user_terms_acceptance                  user_terms_acceptance[]
+  roles                                  roles                   @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users__role_id__roles")
 
   @@index([status], map: "idx_users__status")
   @@index([deleted_at], map: "idx_users__deleted_at")
