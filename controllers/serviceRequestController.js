@@ -689,12 +689,25 @@ function formatServiceRequest(r) {
     ? `${r.agencies.users.first_name || ''} ${r.agencies.users.last_name || ''}`.trim()
     : null;
 
+  // service_date es @db.Date: Prisma lo devuelve como Date a medianoche UTC.
+  // Serializar como YYYY-MM-DD garantiza que el front muestre la fecha real
+  // del registro sin que el toLocaleDateString del navegador la corra a su tz local.
+  const serviceDateStr = r.service_date instanceof Date
+    ? r.service_date.toISOString().split('T')[0]
+    : r.service_date;
+
+  // start_time es @db.Time(6): Prisma lo devuelve como Date sobre 1970-01-01 UTC.
+  // Devolverlo como HH:mm evita lecturas con getHours() que dependen de tz local.
+  const startTimeStr = r.start_time instanceof Date
+    ? `${String(r.start_time.getUTCHours()).padStart(2, '0')}:${String(r.start_time.getUTCMinutes()).padStart(2, '0')}`
+    : r.start_time;
+
   return {
     id: r.id,
     agencyId: r.agency_id,
     guideId: r.guide_id,
-    serviceDate: r.service_date,
-    startTime: r.start_time,
+    serviceDate: serviceDateStr,
+    startTime: startTimeStr,
     durationHours: r.duration_hours,
     groupSize: r.group_size,
     languages: r.languages,

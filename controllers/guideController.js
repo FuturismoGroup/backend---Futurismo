@@ -2086,16 +2086,20 @@ const getCompleteAgenda = async (req, res) => {
           eventType: event.event_type,
           title: event.title,
           description: event.description,
-          date: event.start_datetime.toISOString().split('T')[0],
-          startTime: event.start_datetime.toISOString().split('T')[1].substring(0, 5),
-          endTime: event.end_datetime.toISOString().split('T')[1].substring(0, 5),
+          // start_datetime/end_datetime son @db.Timestamptz: convertir a Lima
+          // para que el día y la hora coincidan con la zona del usuario,
+          // sin importar si el server corre en UTC (Railway) o local.
+          date: toLimaDateString(event.start_datetime),
+          startTime: toLimaTimeString(event.start_datetime),
+          endTime: toLimaTimeString(event.end_datetime),
           allDay: event.all_day,
           color: event.color,
           visibility: event.blocks_availability ? 'occupied' : 'private',
           source: 'personal'
         })),
       ...assignedTours.map(tour => {
-        // tour.time es DateTime @db.Time(6) - formatear a HH:mm
+        // tour.date es @db.Date (sin tz): usar la parte ISO directamente.
+        // tour.time es @db.Time (sin tz): tomar la hora UTC tal cual viene.
         const timeStr = tour.time
           ? `${String(tour.time.getUTCHours()).padStart(2, '0')}:${String(tour.time.getUTCMinutes()).padStart(2, '0')}`
           : '09:00';
@@ -2105,7 +2109,7 @@ const getCompleteAgenda = async (req, res) => {
           eventType: 'company_tour',
           title: tour.tours?.name || 'Tour asignado',
           description: `${tour.participants} pasajeros`,
-          date: tour.date.toISOString().split('T')[0],
+          date: toLimaDateString(tour.date),
           startTime: timeStr,
           endTime: calculateEndTime(timeStr, tour.tours?.duration || 120),
           allDay: false,
@@ -2120,6 +2124,13 @@ const getCompleteAgenda = async (req, res) => {
         const agencyName = sr.agencies?.users
           ? `${sr.agencies.users.first_name} ${sr.agencies.users.last_name}`.trim()
           : 'Agencia';
+        // service_date es @db.Date (sin tz) y start_time es @db.Time (sin tz).
+        // Para @db.Date Prisma devuelve medianoche UTC, así que toLimaDateString
+        // sobre un Date Prisma podría correrlo. Usar la parte ISO de UTC mantiene
+        // intacto el día almacenado.
+        const dateStr = sr.service_date instanceof Date
+          ? sr.service_date.toISOString().split('T')[0]
+          : sr.service_date;
         const timeStr = sr.start_time
           ? `${String(sr.start_time.getUTCHours()).padStart(2, '0')}:${String(sr.start_time.getUTCMinutes()).padStart(2, '0')}`
           : '09:00';
@@ -2133,7 +2144,7 @@ const getCompleteAgenda = async (req, res) => {
             ? `Solicitud pendiente - ${agencyName}`
             : `Servicio Marketplace - ${agencyName}`,
           description: sr.message || sr.location || '',
-          date: sr.service_date.toISOString().split('T')[0],
+          date: dateStr,
           startTime: timeStr,
           endTime: calculateEndTime(timeStr, durationMinutes),
           allDay: false,
@@ -2189,6 +2200,44 @@ function calculateEndTime(startTime, durationMinutes) {
   const endHours = Math.floor(totalMinutes / 60) % 24;
   const endMinutes = totalMinutes % 60;
   return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+}
+
+// =============================================================================
+// HELPERS DE TIMEZONE
+// =============================================================================
+// La app opera en Lima (America/Lima, UTC-5). Railway corre en UTC, local puede
+// estar en otra tz. Estos helpers fuerzan el formato Lima en cualquier entorno.
+const LIMA_TZ = 'America/Lima';
+
+// Formato YYYY-MM-DD del Date en Lima (en-CA usa formato ISO en toLocaleDateString)
+function toLimaDateString(date) {
+  if (!date) return null;
+  if (typeof date === 'string') {
+    // Si ya viene "YYYY-MM-DD" o "YYYY-MM-DDTHH:mm..." con la parte de fecha,
+    // confiar en esa porción solo si no trae info de timezone que valga la pena convertir.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    date = new Date(date);
+  }
+  if (isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: LIMA_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
+// Formato HH:mm del Date en Lima
+function toLimaTimeString(date) {
+  if (!date) return null;
+  if (typeof date === 'string') {
+    const m = date.match(/^(\d{1,2}):(\d{2})/);
+    if (m) return `${m[1].padStart(2, '0')}:${m[2]}`;
+    date = new Date(date);
+  }
+  if (isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: LIMA_TZ,
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(date);
 }
 
 /**

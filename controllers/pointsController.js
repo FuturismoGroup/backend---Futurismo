@@ -3,6 +3,8 @@
 // API-041 a API-050: Points y Rewards
 
 const prisma = require('../config/db');
+const { uploadRewardImageToStorage } = require('../middlewares/uploadReward');
+const { deleteObject, extractKeyFromUrl } = require('../utils/wasabiStorage');
 
 // Niveles por defecto (fallback si no hay config en BD)
 const DEFAULT_LEVELS = [
@@ -596,11 +598,17 @@ const createReward = async (req, res) => {
     // Resolver campos (el frontend puede enviar diferentes nombres)
     const finalPoints = pointsCost || points;
 
-    // Si hay archivo subido, usar la ruta del archivo; sino usar URL proporcionada
+    // Si hay archivo subido, almacenarlo en Wasabi; sino usar URL proporcionada.
+    // req.file viene de multer.memoryStorage (buffer en memoria) — no existe en disco.
     let finalImage = null;
     if (req.file) {
-      // Construir URL relativa para servir desde el backend
-      finalImage = `/uploads/rewards/${req.file.filename}`;
+      try {
+        const uploaded = await uploadRewardImageToStorage(req.file);
+        finalImage = uploaded.url; // /api/files/rewards/<filename>
+      } catch (uploadErr) {
+        console.error('Error subiendo imagen de reward a Wasabi:', uploadErr);
+        return res.status(500).json({ success: false, error: 'Error al subir la imagen' });
+      }
     } else {
       finalImage = imageUrl || image || null;
     }
@@ -716,10 +724,22 @@ const updateReward = async (req, res) => {
     // Resolver campos
     const finalPoints = pointsCost || points;
 
-    // Si hay archivo subido, usar la ruta del archivo; sino mantener existente o usar URL
+    // Si hay archivo subido, almacenarlo en Wasabi; sino mantener existente o usar URL.
+    // Si subimos una imagen nueva, borrar la anterior de Wasabi para no acumular basura.
     let finalImage;
     if (req.file) {
-      finalImage = `/uploads/rewards/${req.file.filename}`;
+      try {
+        const uploaded = await uploadRewardImageToStorage(req.file);
+        finalImage = uploaded.url;
+        const oldKey = extractKeyFromUrl(existingReward.image);
+        if (oldKey) {
+          // No bloqueamos el response si la limpieza falla
+          deleteObject(oldKey).catch(err => console.warn('No se pudo eliminar imagen vieja:', err.message));
+        }
+      } catch (uploadErr) {
+        console.error('Error subiendo imagen de reward a Wasabi:', uploadErr);
+        return res.status(500).json({ success: false, error: 'Error al subir la imagen' });
+      }
     } else if (imageUrl !== undefined) {
       finalImage = imageUrl;
     } else if (image !== undefined) {

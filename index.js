@@ -119,6 +119,7 @@ const financialRoutes = require('./routes/financialRoutes');
 const termsRoutes = require('./routes/termsRoutes');
 const languageRoutes = require('./routes/languageRoutes');
 const systemRoutes = require('./routes/systemRoutes');
+const fileRoutes = require('./routes/fileRoutes');
 
 // Registrar rutas
 app.use('/api/reservations', reservationRoutes);
@@ -155,6 +156,9 @@ app.use('/api/financial', financialRoutes);
 app.use('/api/terms', termsRoutes);
 app.use('/api/languages', languageRoutes);
 app.use('/api/system', systemRoutes);
+// Sirve archivos almacenados en Wasabi vía presigned URL (redirect 302).
+// Las URLs guardadas en BD usan el formato /api/files/<key>.
+app.use('/api/files', fileRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {

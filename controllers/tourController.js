@@ -1110,28 +1110,48 @@ const getGuideTours = async (req, res) => {
       ? ['confirmed', 'pending', 'in_progress', 'completed']
       : ['confirmed', 'pending', 'in_progress'];
 
-    const reservations = await prisma.reservations.findMany({
-      where: {
-        guide_id: guide.id,
-        status: { in: statusFilter }
-      },
-      include: {
-        tours: { select: { id: true, name: true, duration: true, meeting_point: true } },
-        agencies: { select: { id: true, business_name: true, agency_phone: true } },
-        active_tours: { select: { id: true, status: true, started_at: true } },
-        reservation_groups: {
-          select: {
-            id: true,
-            representative_name: true,
-            representative_phone: true,
-            adults_count: true,
-            children_count: true
-          },
-          orderBy: { created_at: 'asc' }
-        }
-      },
-      orderBy: { date: 'asc' }
-    });
+    // Para service_requests del marketplace usamos sus propios estados:
+    //   accepted = el guía ya aceptó la solicitud y queda como trabajo próximo
+    //   completed = servicio realizado (sólo si includeCompleted)
+    // pending/rejected/cancelled se manejan únicamente desde "Mis Servicios".
+    const serviceRequestStatusFilter = includeCompleted === 'true'
+      ? ['accepted', 'completed']
+      : ['accepted'];
+
+    const [reservations, serviceRequests] = await Promise.all([
+      prisma.reservations.findMany({
+        where: {
+          guide_id: guide.id,
+          status: { in: statusFilter }
+        },
+        include: {
+          tours: { select: { id: true, name: true, duration: true, meeting_point: true } },
+          agencies: { select: { id: true, business_name: true, agency_phone: true } },
+          active_tours: { select: { id: true, status: true, started_at: true } },
+          reservation_groups: {
+            select: {
+              id: true,
+              representative_name: true,
+              representative_phone: true,
+              adults_count: true,
+              children_count: true
+            },
+            orderBy: { created_at: 'asc' }
+          }
+        },
+        orderBy: { date: 'asc' }
+      }),
+      prisma.service_requests.findMany({
+        where: {
+          guide_id: guide.id,
+          status: { in: serviceRequestStatusFilter }
+        },
+        include: {
+          agencies: { select: { id: true, business_name: true, agency_phone: true } }
+        },
+        orderBy: { service_date: 'asc' }
+      })
+    ]);
 
     // Auto-reparar reservas en 'in_progress' o 'completed' que quedaron sin
     // registro en active_tours (p.ej. por updates directos a la reserva o
@@ -1169,27 +1189,65 @@ const getGuideTours = async (req, res) => {
       });
     }
 
+    const reservationItems = reservations.map(r => ({
+      reservationId: r.id,
+      tour: r.tours,
+      date: r.date ? r.date.toISOString().split('T')[0] : null,
+      time: r.time ? r.time.toISOString().substring(11, 16) : null,
+      participants: r.participants,
+      status: r.status,
+      agency: r.agencies,
+      pickupLocation: r.pickup_location || null,
+      location: r.pickup_location || r.tours?.meeting_point || r.meeting_point || '',
+      activeTour: r.active_tours || null,
+      source: 'reservation',
+      groups: (r.reservation_groups || []).map(g => ({
+        id: g.id,
+        representativeName: g.representative_name,
+        representativePhone: g.representative_phone,
+        adultsCount: g.adults_count,
+        childrenCount: g.children_count
+      }))
+    }));
+
+    // Mapear service_requests al mismo shape que reservations para que el
+    // frontend de "Mis Tours" los liste igual que los tours formales.
+    // Sin activeTour porque service_requests no usa la tabla active_tours.
+    const serviceRequestItems = serviceRequests.map(sr => {
+      const agencyName = sr.agencies?.business_name || null;
+      return {
+        reservationId: sr.id,
+        tour: {
+          id: null,
+          name: agencyName ? `Servicio Marketplace - ${agencyName}` : 'Servicio Marketplace',
+          duration: sr.duration_hours ? sr.duration_hours * 60 : null,
+          meeting_point: sr.location || null
+        },
+        date: sr.service_date ? sr.service_date.toISOString().split('T')[0] : null,
+        time: sr.start_time ? sr.start_time.toISOString().substring(11, 16) : null,
+        participants: sr.group_size || 0,
+        // 'accepted' se expone como 'confirmed' para que la UI lo trate como
+        // próximo tour confirmado (la lista lo ordena/colorea igual).
+        status: sr.status === 'accepted' ? 'confirmed' : sr.status,
+        agency: sr.agencies,
+        pickupLocation: sr.location || null,
+        location: sr.location || '',
+        activeTour: null,
+        source: 'service_request',
+        groups: []
+      };
+    });
+
+    const combined = [...reservationItems, ...serviceRequestItems].sort((a, b) => {
+      const da = a.date || '';
+      const db = b.date || '';
+      if (da !== db) return da.localeCompare(db);
+      return (a.time || '').localeCompare(b.time || '');
+    });
+
     return res.status(200).json({
       success: true,
-      data: reservations.map(r => ({
-        reservationId: r.id,
-        tour: r.tours,
-        date: r.date ? r.date.toISOString().split('T')[0] : null,
-        time: r.time ? r.time.toISOString().substring(11, 16) : null,
-        participants: r.participants,
-        status: r.status,
-        agency: r.agencies,
-        pickupLocation: r.pickup_location || null,
-        location: r.pickup_location || r.tours?.meeting_point || r.meeting_point || '',
-        activeTour: r.active_tours || null,
-        groups: (r.reservation_groups || []).map(g => ({
-          id: g.id,
-          representativeName: g.representative_name,
-          representativePhone: g.representative_phone,
-          adultsCount: g.adults_count,
-          childrenCount: g.children_count
-        }))
-      }))
+      data: combined
     });
   } catch (error) {
     console.error('Error en getGuideTours:', error);

@@ -223,6 +223,10 @@ const createProvider = async (req, res) => {
     let providerData;
     let categoryId = null;
 
+    // Extraer services del body para procesarlo después de crear el proveedor
+    // (debe estar fuera del if para que sea accesible en el procesamiento posterior)
+    const { services: servicesFromBody } = req.body;
+
     if (isFrontendFormat) {
       // Formato Frontend (ELM-339 ProviderForm)
       const {
@@ -232,7 +236,6 @@ const createProvider = async (req, res) => {
         contact = {},
         rating,
         capacity,
-        services,
         specialties,
         languages,
         description,
@@ -392,8 +395,8 @@ const createProvider = async (req, res) => {
 
     // Procesar servicios si se proporcionaron (formato frontend)
     // Los servicios se asocian a la CATEGORÍA, no al proveedor
-    if (isFrontendFormat && services && Array.isArray(services) && services.length > 0) {
-      const validServices = services.filter(s => s && typeof s === 'string' && s.trim());
+    if (isFrontendFormat && Array.isArray(servicesFromBody) && servicesFromBody.length > 0) {
+      const validServices = servicesFromBody.filter(s => s && typeof s === 'string' && s.trim());
 
       for (const serviceIdOrKey of validServices) {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceIdOrKey);
@@ -1154,6 +1157,15 @@ const createService = async (req, res) => {
       });
     }
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'La categoría seleccionada no es válida. Recarga la página e intenta nuevamente.'
+      });
+    }
+
     if (!name || name.length < 2) {
       return res.status(400).json({
         success: false,
@@ -1176,7 +1188,8 @@ const createService = async (req, res) => {
     }
 
     // serviceType es opcional - si no se envía, se usa el nombre de la categoría
-    const effectiveServiceType = serviceType || category.name;
+    // Truncar a 50 caracteres para respetar la restricción VARCHAR(50) del schema
+    const effectiveServiceType = (serviceType || category.name).slice(0, 50);
 
     const service = await prisma.provider_services.create({
       data: {
@@ -1212,11 +1225,11 @@ const createService = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error en createService:', error);
+    console.error('Error en createService:', error, '\nBody:', req.body);
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
-      message: 'Error al crear servicio'
+      message: error?.message || 'Error al crear servicio'
     });
   }
 };

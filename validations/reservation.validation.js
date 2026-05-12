@@ -190,9 +190,11 @@ const updateStatusSchema = Joi.object({
       'any.only': 'Estado debe ser: pending, confirmed, in_progress, completed, cancelled o no_show',
       'any.required': 'Estado es requerido'
     }),
-  reason: Joi.string()
-    .max(500)
-    .optional()
+  reason: Joi.string().max(500).optional(),
+  // El frontend envía `cancellationReason` (clave usada por el controller).
+  // stripUnknown la descartaba antes de llegar al controller, por eso fallaba
+  // la cancelación. Se acepta explícitamente.
+  cancellationReason: Joi.string().max(500).optional().allow('', null)
 });
 
 const assignGuideSchema = Joi.object({

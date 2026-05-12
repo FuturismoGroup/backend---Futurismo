@@ -119,13 +119,16 @@ router.post(
 /**
  * API-005: UpdateReservationStatus
  * PATCH /api/reservations/:id/status
- * Roles permitidos: Admin, Guide (guía solo puede iniciar/completar sus propios tours)
+ * Roles permitidos:
+ *   - Admin: cualquier transición permitida
+ *   - Guide: solo iniciar/completar sus propios tours
+ *   - Agency: solo cancelar SUS PROPIAS reservas (el controller hace el guard)
  * NOTA: Debe ir ANTES de /:id genérico
  */
 router.patch(
   '/:id/status',
   authenticate,
-  authorize(['admin', 'guide']),
+  authorize(['admin', 'guide', 'agency']),
   validate(rv.updateStatusSchema),
   reservationController.updateReservationStatus
 );

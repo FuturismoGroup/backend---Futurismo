@@ -667,19 +667,6 @@ const createReservation = async (req, res) => {
       });
     }
 
-    // Validar paymentMethod dinamicamente contra la BD
-    const paymentValidation = await validatePaymentMethod(paymentMethod);
-    let validatedPaymentMethod = paymentMethod;
-
-    if (paymentValidation.useDefault) {
-      validatedPaymentMethod = 'pending';
-    } else if (!paymentValidation.valid) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: `paymentMethod debe ser uno de: ${paymentValidation.validMethods.join(', ')}`
-      });
-    }
-
     // Validar que tour existe y está activo
     const tour = await prisma.tours.findUnique({
       where: { id: tourId }
@@ -733,6 +720,22 @@ const createReservation = async (req, res) => {
         error: 'Bad Request',
         message: 'Se requiere una agencia para crear la reserva'
       });
+    }
+
+    // Validar paymentMethod contra codigos globales O metodos de pago propios
+    // de la agencia (UUID en agency_payment_methods). El frontend manda el UUID
+    // del metodo cuando la agencia configura sus propias cuentas.
+    const paymentValidation = await validatePaymentMethod(paymentMethod, agencyId);
+    let validatedPaymentMethod = paymentMethod;
+    if (paymentValidation.useDefault) {
+      validatedPaymentMethod = 'pending';
+    } else if (!paymentValidation.valid) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: `paymentMethod debe ser uno de: ${paymentValidation.validMethods.join(', ')}`
+      });
+    } else {
+      validatedPaymentMethod = paymentValidation.resolvedMethod || paymentMethod;
     }
 
     // Calcular totalAmount (precio unico por persona, sin diferencia adulto/nino)
@@ -1043,9 +1046,10 @@ const updateReservation = async (req, res) => {
       updateData.notes = notes;
     }
 
-    // Validar y actualizar paymentMethod dinamicamente contra la BD
+    // Validar y actualizar paymentMethod: acepta codigos globales o UUIDs de
+    // agency_payment_methods (resolviendo al type para guardar un codigo valido).
     if (paymentMethod !== undefined) {
-      const paymentValidation = await validatePaymentMethod(paymentMethod);
+      const paymentValidation = await validatePaymentMethod(paymentMethod, existingReservation.agency_id);
 
       if (paymentValidation.useDefault) {
         // Si es vacio/null, no cambiar el valor actual
@@ -1055,7 +1059,7 @@ const updateReservation = async (req, res) => {
           message: `paymentMethod debe ser uno de: ${paymentValidation.validMethods.join(', ')}`
         });
       } else {
-        updateData.payment_method = paymentMethod;
+        updateData.payment_method = paymentValidation.resolvedMethod || paymentMethod;
       }
     }
 
@@ -1252,6 +1256,23 @@ const updateReservationStatus = async (req, res) => {
         error: 'Not Found',
         message: 'Reserva no encontrada'
       });
+    }
+
+    // Validación especial para agencias: solo pueden CANCELAR sus propias reservas.
+    // Cualquier otro cambio de estado queda reservado para admin/guía.
+    if (req.user?.role === 'agency') {
+      if (status !== 'cancelled') {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Las agencias solo pueden cancelar reservas, no cambiar otros estados'
+        });
+      }
+      if (req.user.agencyId && existingReservation.agency_id !== req.user.agencyId) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Solo puedes cancelar reservas de tu propia agencia'
+        });
+      }
     }
 
     // Validación especial para guías: solo pueden cambiar estado de sus propios tours

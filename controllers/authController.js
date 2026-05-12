@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const prisma = require('../config/db');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/env');
+const { uploadGuidePhotoToStorage } = require('../middlewares/uploadGuidePhoto');
 
 const REFRESH_TOKEN_EXPIRES_DAYS = 7;
 
@@ -524,8 +525,21 @@ const registerFreelancer = async (req, res) => {
       city
     } = req.body;
 
-    // Foto subida por multer (si existe)
-    const photo = req.file ? `/uploads/guias-freelance/${req.file.filename}` : null;
+    // Foto subida por multer (memoryStorage) → Wasabi.
+    // req.file.buffer está disponible; .filename NO existe con memoryStorage.
+    let photo = null;
+    if (req.file) {
+      try {
+        const uploaded = await uploadGuidePhotoToStorage(req.file);
+        photo = uploaded.url; // /api/files/guides/<filename>
+      } catch (uploadErr) {
+        console.error('Error subiendo foto del guía a Wasabi:', uploadErr);
+        return res.status(500).json({
+          error: 'Internal Server Error',
+          message: 'Error al subir la foto del guía'
+        });
+      }
+    }
 
     // Validaciones obligatorias
     if (!firstName || !lastName || !email || !phone || !documentType || !documentNumber || !password) {

@@ -39,12 +39,23 @@ const getValidPaymentMethods = async () => {
   }
 };
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Valida si un metodo de pago es valido
- * @param {string} paymentMethod - Codigo del metodo de pago
- * @returns {Promise<{valid: boolean, validMethods: string[]}>}
+ * Valida si un metodo de pago es valido.
+ *
+ * Acepta dos formatos:
+ *   1) un codigo global de payment_methods (cash, yape, bank_transfer, ...)
+ *   2) un UUID de agency_payment_methods. En ese caso resuelve a su `type`
+ *      (que es un codigo global) para guardar un valor consistente en
+ *      reservations.payment_method. Sin esto, las reservas fallan apenas la
+ *      agencia configura un metodo de pago propio.
+ *
+ * @param {string} paymentMethod
+ * @param {string} [agencyId] - opcional, requerido para validar UUIDs
+ * @returns {Promise<{valid: boolean, validMethods: string[], useDefault?: boolean, resolvedMethod?: string}>}
  */
-const validatePaymentMethod = async (paymentMethod) => {
+const validatePaymentMethod = async (paymentMethod, agencyId = null) => {
   const validMethods = await getValidPaymentMethods();
 
   // Permitir vacio o null (usara default 'pending')
@@ -52,10 +63,30 @@ const validatePaymentMethod = async (paymentMethod) => {
     return { valid: true, validMethods, useDefault: true };
   }
 
-  const isValid = validMethods.includes(paymentMethod);
+  if (validMethods.includes(paymentMethod)) {
+    return { valid: true, validMethods, useDefault: false, resolvedMethod: paymentMethod };
+  }
+
+  // Si parece UUID, intentar resolverlo contra los metodos de pago de la agencia
+  if (UUID_REGEX.test(paymentMethod)) {
+    try {
+      const where = { id: paymentMethod, is_active: true };
+      if (agencyId) where.agency_id = agencyId;
+      const agencyMethod = await prisma.agency_payment_methods.findFirst({
+        where,
+        select: { id: true, type: true, agency_id: true }
+      });
+      if (agencyMethod && (!agencyId || agencyMethod.agency_id === agencyId)) {
+        const resolved = validMethods.includes(agencyMethod.type) ? agencyMethod.type : agencyMethod.type;
+        return { valid: true, validMethods, useDefault: false, resolvedMethod: resolved };
+      }
+    } catch (error) {
+      console.error('Error resolviendo agency_payment_method:', error);
+    }
+  }
 
   return {
-    valid: isValid,
+    valid: false,
     validMethods,
     useDefault: false
   };
