@@ -174,12 +174,12 @@ router.post(
 /**
  * API-053: CreateRating
  * POST /api/reservations/:reservationId/rating
- * Roles permitidos: Admin, Agency, Client
+ * Roles permitidos: Agency (solo la agencia que hizo la reserva puede calificar)
  */
 router.post(
   '/:reservationId/rating',
   authenticate,
-  authorize(['admin', 'agency']),
+  authorize(['agency']),
   ratingController.createRating
 );
 

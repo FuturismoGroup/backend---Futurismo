@@ -256,6 +256,15 @@ const createRating = async (req, res) => {
       return res.status(400).json({ error: 'Solo se puede calificar reservas completadas o confirmadas' });
     }
 
+    // Solo la agencia que hizo la reserva puede calificarla
+    const userAgency = await prisma.agencies.findUnique({
+      where: { user_id: req.user.id },
+      select: { id: true }
+    });
+    if (!userAgency || reservation.agency_id !== userAgency.id) {
+      return res.status(403).json({ error: 'Solo la agencia que hizo la reserva puede calificarla' });
+    }
+
     // Verificar si ya existe rating para esta reserva (constraint unique en schema)
     const existingRating = await prisma.ratings.findUnique({
       where: { reservation_id: reservationId }

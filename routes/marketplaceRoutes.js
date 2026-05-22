@@ -225,12 +225,12 @@ router.post(
 /**
  * POST /api/marketplace/service-requests/:id/complete
  * Marcar servicio como completado
- * Roles: Agency (owner), Admin
+ * Roles: Agency (owner), Guide (asignado), Admin
  */
 router.post(
   '/service-requests/:id/complete',
   authenticate,
-  authorize(['admin', 'agency']),
+  authorize(['admin', 'agency', 'guide']),
   serviceRequestController.completeServiceRequest
 );
 

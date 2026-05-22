@@ -291,6 +291,51 @@ const createProvider = async (req, res) => {
         });
       }
 
+      // Validar formato UUID para category y location
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_REGEX.test(category)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'La categoría seleccionada no es válida. Recarga la página e intenta nuevamente.'
+        });
+      }
+      if (location && !UUID_REGEX.test(location)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'La ubicación seleccionada no es válida. Recarga la página e intenta nuevamente.'
+        });
+      }
+
+      // Verificar que la categoría existe (evita 500 por FK violation con datos en cache)
+      const categoryExists = await prisma.provider_categories.findUnique({
+        where: { id: category },
+        select: { id: true }
+      });
+      if (!categoryExists) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'La categoría seleccionada ya no existe. Recarga la página para actualizar la lista.'
+        });
+      }
+
+      // Verificar que la ubicación existe si se proporcionó
+      if (location) {
+        const locationExists = await prisma.locations.findUnique({
+          where: { id: location },
+          select: { id: true }
+        });
+        if (!locationExists) {
+          return res.status(400).json({
+            success: false,
+            error: 'Bad Request',
+            message: 'La ubicación seleccionada ya no existe. Recarga la página para actualizar la lista.'
+          });
+        }
+      }
+
       // Mapear al schema de Prisma (TBL-019 providers)
       categoryId = category;
       providerData = {
@@ -463,11 +508,36 @@ const createProvider = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error en createProvider:', error);
+    console.error('Error en createProvider:', error, '\nBody:', req.body);
+
+    // Manejar errores de Prisma con mensajes útiles para el usuario
+    if (error?.code === 'P2003') {
+      // Foreign key violation - generalmente categoría/ubicación inexistente
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'La categoría o ubicación seleccionada no existe. Recarga la página para actualizar las opciones.'
+      });
+    }
+    if (error?.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        error: 'Conflict',
+        message: 'Ya existe un proveedor con esos datos.'
+      });
+    }
+    if (error?.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'Registro relacionado no encontrado.'
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
-      message: 'Error al crear proveedor'
+      message: error?.message || 'Error al crear proveedor'
     });
   }
 };
@@ -675,11 +745,27 @@ const updateProvider = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error en updateProvider:', error);
+    console.error('Error en updateProvider:', error, '\nBody:', req.body);
+
+    if (error?.code === 'P2003') {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'La categoría o ubicación seleccionada no existe. Recarga la página para actualizar las opciones.'
+      });
+    }
+    if (error?.code === 'P2025') {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'Proveedor o registro relacionado no encontrado.'
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
-      message: 'Error al actualizar proveedor'
+      message: error?.message || 'Error al actualizar proveedor'
     });
   }
 };

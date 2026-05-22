@@ -477,7 +477,9 @@ const completeServiceRequest = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
     }
 
-    if (req.user.role !== 'admin' && request.agency_id !== req.user.agencyId) {
+    const isOwnerAgency = request.agency_id === req.user.agencyId;
+    const isAssignedGuide = request.guide_id === req.user.guideId;
+    if (req.user.role !== 'admin' && !isOwnerAgency && !isAssignedGuide) {
       return res.status(403).json({ success: false, error: 'No tiene permiso para completar esta solicitud' });
     }
 

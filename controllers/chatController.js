@@ -58,6 +58,7 @@ const listChatConversations = async (req, res) => {
             }
           },
           messages: {
+            where: { deleted_at: null },
             take: 1,
             orderBy: { created_at: 'desc' },
             include: {
@@ -1285,11 +1286,16 @@ const getChatContacts = async (req, res) => {
       }));
     }
 
-    // Agency y Guide pueden ver admins
+    // Agency y Guide pueden ver admins SIEMPRE.
+    // OJO: users.role no existe como columna; el rol vive en users.roles.name
+    // (vía role_id). El query anterior `where: { role: 'admin' }` devolvía cero
+    // resultados y por eso ningún usuario que no fuera admin encontraba contactos.
     if (userRole === 'agency' || userRole === 'guide') {
       const admins = await prisma.users.findMany({
         where: {
-          role: 'admin',
+          roles: {
+            name: { in: ['admin', 'administrator'] }
+          },
           status: 'active',
           id: { not: userId },
           ...userSearchFilter
@@ -1306,32 +1312,78 @@ const getChatContacts = async (req, res) => {
       }));
     }
 
-    // Guide puede ver agencias
+    // Guide ve solo las agencias con las que tiene servicio vigente, programado,
+    // en curso o completado (no canceladas/rechazadas), más su agencia de planta
+    // si la tiene. Antes devolvía TODAS las agencias, lo cual ni filtraba ni se
+    // ajustaba al requisito de "relación de servicio".
     if (userRole === 'guide') {
-      const agencies = await prisma.agencies.findMany({
-        where: {
-          status: { not: 'deleted' },
-          users: {
-            status: 'active',
-            id: { not: userId },
-            ...userSearchFilter
-          }
-        },
-        include: {
-          users: {
-            select: { id: true, first_name: true, last_name: true, email: true, profile_photo: true }
-          }
-        },
-        orderBy: { business_name: 'asc' }
-      });
+      const guideId = req.user.guideId || req.user.guide?.id;
 
-      contacts.agencies = agencies.map(a => ({
-        id: a.users.id,
-        name: a.business_name || `${a.users.first_name || ''} ${a.users.last_name || ''}`.trim(),
-        email: a.users.email || a.agency_email,
-        avatar: a.users.profile_photo || null,
-        role: 'agency'
-      }));
+      if (guideId) {
+        // Agencia de planta del guía (si aplica)
+        const guideRecord = await prisma.guides.findUnique({
+          where: { id: guideId },
+          select: { agency_id: true }
+        });
+
+        // Agencias con service_requests o reservations vigentes/programadas/en
+        // curso/completadas (se excluyen 'cancelled' y 'rejected').
+        const ACTIVE_REQUEST_STATUSES = ['pending', 'accepted', 'completed'];
+        const ACTIVE_RESERVATION_STATUSES = ['pending', 'confirmed', 'in_progress', 'completed'];
+
+        const [serviceRequestAgencies, reservationAgencies] = await Promise.all([
+          prisma.service_requests.findMany({
+            where: {
+              guide_id: guideId,
+              status: { in: ACTIVE_REQUEST_STATUSES }
+            },
+            select: { agency_id: true },
+            distinct: ['agency_id']
+          }),
+          prisma.reservations.findMany({
+            where: {
+              guide_id: guideId,
+              status: { in: ACTIVE_RESERVATION_STATUSES }
+            },
+            select: { agency_id: true },
+            distinct: ['agency_id']
+          })
+        ]);
+
+        const linkedAgencyIds = Array.from(new Set([
+          ...(guideRecord?.agency_id ? [guideRecord.agency_id] : []),
+          ...serviceRequestAgencies.map(s => s.agency_id),
+          ...reservationAgencies.map(r => r.agency_id)
+        ].filter(Boolean)));
+
+        if (linkedAgencyIds.length > 0) {
+          const agencies = await prisma.agencies.findMany({
+            where: {
+              id: { in: linkedAgencyIds },
+              status: { not: 'deleted' },
+              users: {
+                status: 'active',
+                id: { not: userId },
+                ...userSearchFilter
+              }
+            },
+            include: {
+              users: {
+                select: { id: true, first_name: true, last_name: true, email: true, profile_photo: true }
+              }
+            },
+            orderBy: { business_name: 'asc' }
+          });
+
+          contacts.agencies = agencies.map(a => ({
+            id: a.users.id,
+            name: a.business_name || `${a.users.first_name || ''} ${a.users.last_name || ''}`.trim(),
+            email: a.users.email || a.agency_email,
+            avatar: a.users.profile_photo || null,
+            role: 'agency'
+          }));
+        }
+      }
     }
 
     return res.status(200).json({
