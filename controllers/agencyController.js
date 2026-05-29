@@ -1087,6 +1087,44 @@ const updateAgencyStatus = async (req, res) => {
   }
 };
 
+/**
+ * PATCH /api/agencies/:id/verify
+ * Marca o desmarca una agencia como verificada (sello del administrador
+ * tras validar RUC, documentos, etc.). Acepta { verified: boolean } o,
+ * si no se envía, alterna el valor actual.
+ * Roles: Admin
+ */
+const setAgencyVerified = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { verified } = req.body || {};
+
+    const agency = await prisma.agencies.findUnique({
+      where: { id },
+      select: { id: true, verified: true, status: true }
+    });
+    if (!agency || agency.status === 'deleted') {
+      return res.status(404).json({ error: 'Not Found', message: 'Agencia no encontrada' });
+    }
+
+    const nextVerified = typeof verified === 'boolean' ? verified : !agency.verified;
+
+    const updated = await prisma.agencies.update({
+      where: { id },
+      data: { verified: nextVerified },
+      select: { id: true, verified: true }
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { id: updated.id, verified: updated.verified }
+    });
+  } catch (error) {
+    console.error('Error en setAgencyVerified:', error);
+    return res.status(500).json({ error: 'Internal Server Error', message: 'Error al actualizar verificación' });
+  }
+};
+
 module.exports = {
   listAgencies,
   getAgency,
@@ -1097,5 +1135,6 @@ module.exports = {
   getAgencyMonthlyReport,
   getAgencyYearlyReport,
   getAgencyStats,
-  updateAgencyStatus
+  updateAgencyStatus,
+  setAgencyVerified
 };

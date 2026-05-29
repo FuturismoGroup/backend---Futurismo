@@ -84,6 +84,20 @@ router.patch(
 );
 
 /**
+ * PATCH /api/agencies/:id/verify
+ * Marca/desmarca la agencia como verificada (sello del admin tras
+ * validar RUC y documentos). Body: { verified: boolean } opcional;
+ * sin body alterna el valor actual.
+ * Roles permitidos: Admin
+ */
+router.patch(
+  '/:id/verify',
+  authenticate,
+  authorize(['admin']),
+  agencyController.setAgencyVerified
+);
+
+/**
  * GET /api/agencies/:id/stats
  * Estadísticas de la agencia
  * Roles permitidos: Admin, Agency

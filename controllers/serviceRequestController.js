@@ -593,7 +593,12 @@ const createReview = async (req, res) => {
       return res.status(409).json({ success: false, error: 'Ya existe una reseña para esta solicitud' });
     }
 
-    // Crear review y actualizar rating del guía en transacción
+    // Crear review y actualizar rating del guía en transacción.
+    // El promedio cacheado en guides.rating debe combinar:
+    //   - reviews.rating (marketplace)
+    //   - ratings.guide_rating (historial de agencia) — vinculadas vía reservations.guide_id
+    // Si solo se aggrega una fuente, el rating del perfil del guía queda
+    // desincronizado respecto del listado de reseñas (que ya muestra ambas).
     const result = await prisma.$transaction(async (tx) => {
       const review = await tx.reviews.create({
         data: {
@@ -605,16 +610,39 @@ const createReview = async (req, res) => {
         }
       });
 
-      // Recalcular rating promedio del guía
-      const avgResult = await tx.reviews.aggregate({
+      const reservationsForGuide = await tx.reservations.findMany({
         where: { guide_id: request.guide_id },
-        _avg: { rating: true }
+        select: { id: true }
       });
+      const reservationIds = reservationsForGuide.map(r => r.id);
 
-      if (avgResult._avg.rating !== null) {
+      const [reviewsAgg, ratingsAgg] = await Promise.all([
+        tx.reviews.aggregate({
+          where: { guide_id: request.guide_id },
+          _sum: { rating: true },
+          _count: { id: true }
+        }),
+        reservationIds.length > 0
+          ? tx.ratings.aggregate({
+              where: {
+                reservation_id: { in: reservationIds },
+                guide_rating: { not: null }
+              },
+              _sum: { guide_rating: true },
+              _count: { id: true }
+            })
+          : Promise.resolve({ _sum: { guide_rating: 0 }, _count: { id: 0 } })
+      ]);
+
+      const totalSum =
+        (reviewsAgg._sum.rating || 0) + (ratingsAgg._sum.guide_rating || 0);
+      const totalCount =
+        (reviewsAgg._count.id || 0) + (ratingsAgg._count.id || 0);
+
+      if (totalCount > 0) {
         await tx.guides.update({
           where: { id: request.guide_id },
-          data: { rating: Math.round(avgResult._avg.rating * 100) / 100 }
+          data: { rating: Math.round((totalSum / totalCount) * 100) / 100 }
         });
       }
 

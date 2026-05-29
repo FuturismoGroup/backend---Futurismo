@@ -4,6 +4,12 @@
 
 const prisma = require('../config/db');
 
+// Marcador exclusivo de soft-delete. Se mantiene separado de 'inactive'
+// (que es un estado válido del proveedor) para que un eliminado nunca
+// aparezca en listados, búsquedas, conteos ni estadísticas.
+const DELETED_STATUS = 'deleted';
+const notDeleted = { status: { not: DELETED_STATUS } };
+
 /**
  * API-076: ListProviders
  * GET /api/providers
@@ -30,10 +36,12 @@ const listProviders = async (req, res) => {
     const take = Math.min(parseInt(pageSize), 100);
 
     // Construir filtros
-    const where = {};
+    // Por defecto excluir soft-deleted: nunca deben aparecer en el listado
+    const where = { ...notDeleted };
 
     // Solo filtrar por status si se proporciona explicitamente
-    if (status && status !== '') {
+    // (y nunca permitir mostrar los borrados por más que el cliente lo pida)
+    if (status && status !== '' && status !== DELETED_STATUS) {
       where.status = status;
     }
 
@@ -147,7 +155,7 @@ const getProvider = async (req, res) => {
       }
     });
 
-    if (!provider) {
+    if (!provider || provider.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -558,12 +566,12 @@ const updateProvider = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar que existe
+    // Verificar que existe (los soft-deleted se tratan como inexistentes)
     const existing = await prisma.providers.findUnique({
       where: { id }
     });
 
-    if (!existing) {
+    if (!existing || existing.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -606,7 +614,9 @@ const updateProvider = async (req, res) => {
       if (capacity !== undefined) updateData.capacity = capacity ? parseInt(capacity) : null;
       if (description !== undefined) updateData.description = description;
       if (observations !== undefined) updateData.observations = observations;
-      if (status !== undefined) updateData.status = status;
+      // Nunca permitir setear el marcador de soft-delete vía update;
+      // el DELETE es la única vía válida para eliminar.
+      if (status !== undefined && status !== DELETED_STATUS) updateData.status = status;
 
     } else {
       // Formato API documentado (API-079)
@@ -774,18 +784,20 @@ const updateProvider = async (req, res) => {
  * API-080: DeleteProvider
  * DELETE /api/providers/:id
  * Roles permitidos: Admin
- * Soft delete: cambia status a 'inactive'
+ * Soft delete: marca el proveedor con status='deleted' (marcador exclusivo,
+ * distinto de 'inactive') para que no aparezca en ningún listado, pero
+ * preserve la fila para auditoría y permita reusar nombre/email al crear otro.
  */
 const deleteProvider = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar que existe
+    // Verificar que existe (los ya borrados se tratan como no encontrados)
     const existing = await prisma.providers.findUnique({
       where: { id }
     });
 
-    if (!existing) {
+    if (!existing || existing.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -793,11 +805,11 @@ const deleteProvider = async (req, res) => {
       });
     }
 
-    // Soft delete: cambiar status a inactive
+    // Soft delete: marcador exclusivo
     await prisma.providers.update({
       where: { id },
       data: {
-        status: 'inactive',
+        status: DELETED_STATUS,
         updated_at: new Date()
       }
     });
@@ -845,6 +857,8 @@ const listLocations = async (req, res) => {
       ],
       include: {
         providers: {
+          // Excluir soft-deleted del conteo por ubicación
+          where: notDeleted,
           select: {
             id: true,
             category_id: true
@@ -1053,7 +1067,8 @@ const listCategories = async (req, res) => {
       orderBy: { name: 'asc' },
       include: {
         _count: {
-          select: { providers: true }
+          // Excluir soft-deleted del conteo por categoría
+          select: { providers: { where: notDeleted } }
         }
       }
     });
@@ -1334,6 +1349,7 @@ const toggleProviderStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
+    // 'deleted' nunca debe ser asignable por esta ruta — es exclusivo del DELETE
     const validStatuses = ['active', 'inactive', 'suspended'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -1344,7 +1360,7 @@ const toggleProviderStatus = async (req, res) => {
     }
 
     const existing = await prisma.providers.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || existing.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -1383,7 +1399,8 @@ const searchProviders = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
     const take = Math.min(parseInt(pageSize), 100);
 
-    const where = {};
+    // Excluir soft-deleted siempre
+    const where = { ...notDeleted };
 
     if (q) {
       where.OR = [
@@ -1395,7 +1412,7 @@ const searchProviders = async (req, res) => {
 
     if (category) where.category_id = category;
     if (location) where.location_id = location;
-    if (status) where.status = status;
+    if (status && status !== DELETED_STATUS) where.status = status;
     if (minRating) where.rating = { gte: parseFloat(minRating) };
 
     const [providers, total] = await Promise.all([
@@ -1446,7 +1463,7 @@ const checkProviderAvailability = async (req, res) => {
     }
 
     const provider = await prisma.providers.findUnique({ where: { id } });
-    if (!provider) {
+    if (!provider || provider.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -1478,6 +1495,7 @@ const checkProviderAvailability = async (req, res) => {
  */
 const getProvidersStats = async (req, res) => {
   try {
+    // Excluir soft-deleted de todas las métricas
     const [
       totalProviders,
       activeProviders,
@@ -1485,17 +1503,20 @@ const getProvidersStats = async (req, res) => {
       providersByLocation,
       avgRating
     ] = await Promise.all([
-      prisma.providers.count(),
+      prisma.providers.count({ where: notDeleted }),
       prisma.providers.count({ where: { status: 'active' } }),
       prisma.providers.groupBy({
         by: ['category_id'],
+        where: notDeleted,
         _count: { id: true }
       }),
       prisma.providers.groupBy({
         by: ['location_id'],
+        where: notDeleted,
         _count: { id: true }
       }),
       prisma.providers.aggregate({
+        where: notDeleted,
         _avg: { rating: true }
       })
     ]);
@@ -1536,7 +1557,7 @@ const rateProvider = async (req, res) => {
     }
 
     const provider = await prisma.providers.findUnique({ where: { id } });
-    if (!provider) {
+    if (!provider || provider.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -1577,7 +1598,7 @@ const cloneProvider = async (req, res) => {
     const overrides = req.body || {};
 
     const original = await prisma.providers.findUnique({ where: { id } });
-    if (!original) {
+    if (!original || original.status === DELETED_STATUS) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
@@ -1629,10 +1650,11 @@ const exportProviders = async (req, res) => {
   try {
     const { format = 'json', category, location, status } = req.query;
 
-    const where = {};
+    // Excluir soft-deleted del export
+    const where = { ...notDeleted };
     if (category) where.category_id = category;
     if (location) where.location_id = location;
-    if (status) where.status = status;
+    if (status && status !== DELETED_STATUS) where.status = status;
 
     const providers = await prisma.providers.findMany({
       where,
@@ -1766,9 +1788,13 @@ const importProviders = async (req, res) => {
           continue;
         }
 
-        // Verificar duplicado por nombre
+        // Verificar duplicado por nombre — ignorar los soft-deleted
+        // para permitir reusar datos de proveedores ya eliminados.
         const existing = await prisma.providers.findFirst({
-          where: { name: { equals: providerData.name, mode: 'insensitive' } }
+          where: {
+            name: { equals: providerData.name, mode: 'insensitive' },
+            ...notDeleted
+          }
         });
 
         if (existing) {

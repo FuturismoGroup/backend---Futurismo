@@ -746,6 +746,12 @@ const createReservation = async (req, res) => {
     const [hours, minutes] = time.split(':');
     const timeDate = new Date(Date.UTC(1970, 0, 1, parseInt(hours, 10), parseInt(minutes, 10), 0, 0));
 
+    // Las reservas creadas por un admin/superadmin se aprueban automáticamente
+    // (no requieren paso por 'pending'). Las creadas por una agencia siguen
+    // necesitando la aprobación del admin como hasta ahora.
+    const isAdminCreator = userRole === 'administrator' || userRole === 'admin';
+    const initialStatus = isAdminCreator ? 'confirmed' : 'pending';
+
     // Crear reserva + grupos en transaccion
     const result = await prisma.$transaction(async (tx) => {
       const reservation = await tx.reservations.create({
@@ -759,7 +765,7 @@ const createReservation = async (req, res) => {
           participants: adultsNum + childrenNum,
           pickup_location: pickupLocation || null,
           special_requirements: specialRequirements || null,
-          status: 'pending',
+          status: initialStatus,
           total_amount: totalAmount,
           payment_method: validatedPaymentMethod,
           payment_status: 'pending',
@@ -2181,6 +2187,11 @@ const duplicateReservation = async (req, res) => {
       });
     }
 
+    // Duplicar por admin auto-aprueba, igual que createReservation
+    const userRoleDup = req.user?.role;
+    const isAdminCreatorDup = userRoleDup === 'administrator' || userRoleDup === 'admin';
+    const initialStatusDup = isAdminCreatorDup ? 'confirmed' : 'pending';
+
     const result = await prisma.$transaction(async (tx) => {
       const newReservation = await tx.reservations.create({
         data: {
@@ -2193,7 +2204,7 @@ const duplicateReservation = async (req, res) => {
           participants: original.participants,
           pickup_location: original.pickup_location,
           special_requirements: original.special_requirements,
-          status: 'pending',
+          status: initialStatusDup,
           total_amount: original.total_amount,
           payment_method: original.payment_method,
           payment_status: 'pending',

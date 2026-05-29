@@ -308,34 +308,50 @@ const createRating = async (req, res) => {
   }
 };
 
-// Helper para actualizar rating promedio del guia
-// Usa tabla ratings y calcula promedio de guide_rating para reservas del guia
+// Helper para actualizar rating promedio del guia.
+// Agrega calificaciones de DOS fuentes:
+//  - `ratings.guide_rating` (cuando la agencia califica desde el Historial)
+//  - `reviews.rating` (cuando se reseña desde el marketplace)
+// Es importante combinarlas porque si solo aggregáramos de una el promedio
+// cacheado en guides.rating quedaría desincronizado del perfil público del
+// guía, que ahora muestra ambas fuentes.
 async function updateGuideRating(guideId) {
   try {
-    // Obtener todas las reservas del guia con ratings
     const reservationsWithRatings = await prisma.reservations.findMany({
       where: { guide_id: guideId },
       select: { id: true }
     });
-
     const reservationIds = reservationsWithRatings.map(r => r.id);
 
-    if (reservationIds.length === 0) return;
+    const [ratingsStats, reviewsStats] = await Promise.all([
+      reservationIds.length > 0
+        ? prisma.ratings.aggregate({
+            where: {
+              reservation_id: { in: reservationIds },
+              guide_rating: { not: null }
+            },
+            _sum: { guide_rating: true },
+            _count: { id: true }
+          })
+        : Promise.resolve({ _sum: { guide_rating: 0 }, _count: { id: 0 } }),
+      prisma.reviews.aggregate({
+        where: { guide_id: guideId },
+        _sum: { rating: true },
+        _count: { id: true }
+      })
+    ]);
 
-    const stats = await prisma.ratings.aggregate({
-      where: {
-        reservation_id: { in: reservationIds },
-        guide_rating: { not: null }
-      },
-      _avg: { guide_rating: true },
-      _count: { id: true }
-    });
+    const totalSum =
+      (ratingsStats._sum.guide_rating || 0) + (reviewsStats._sum.rating || 0);
+    const totalCount =
+      (ratingsStats._count.id || 0) + (reviewsStats._count.id || 0);
 
-    // Actualizar en tabla guides si existe columna rating
+    const avg = totalCount > 0 ? totalSum / totalCount : 0;
+
     await prisma.guides.update({
       where: { id: guideId },
       data: {
-        rating: stats._avg.guide_rating || 0
+        rating: Math.round(avg * 100) / 100
       }
     });
   } catch (error) {

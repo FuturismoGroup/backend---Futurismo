@@ -280,7 +280,73 @@ const getGuideProfile = async (req, res) => {
       });
     }
 
+    // Las calificaciones desde el historial de la agencia viven en la tabla
+    // `ratings` (vinculada a reservations), no en `reviews`. Para que el perfil
+    // del guía refleje TODAS las calificaciones recibidas (marketplace +
+    // historial) leemos ambas fuentes y las unimos.
+    const [historyRatings, historyRatingsCount, historyRatingsAvg] = await Promise.all([
+      prisma.ratings.findMany({
+        where: {
+          reservations: { guide_id: id },
+          guide_rating: { not: null }
+        },
+        include: {
+          users: { select: { first_name: true, last_name: true } }
+        },
+        orderBy: { created_at: 'desc' },
+        take: 10
+      }),
+      prisma.ratings.count({
+        where: {
+          reservations: { guide_id: id },
+          guide_rating: { not: null }
+        }
+      }),
+      prisma.ratings.aggregate({
+        where: {
+          reservations: { guide_id: id },
+          guide_rating: { not: null }
+        },
+        _avg: { guide_rating: true },
+        _sum: { guide_rating: true }
+      })
+    ]);
+
     const completedCount = (guide._count.reservations || 0) + (guide._count.service_requests || 0);
+
+    // Calcular rating combinado (reviews + ratings históricos)
+    const reviewsCount = guide._count.reviews || 0;
+    const reviewsAvg = guide.rating ? parseFloat(guide.rating) : 0;
+    const totalReviewCount = reviewsCount + historyRatingsCount;
+
+    let combinedRating = null;
+    if (totalReviewCount > 0) {
+      const ratingsSum = historyRatingsAvg._sum.guide_rating || 0;
+      const reviewsSum = reviewsCount > 0 ? reviewsAvg * reviewsCount : 0;
+      combinedRating = (reviewsSum + ratingsSum) / totalReviewCount;
+    }
+
+    // Unir y ordenar reseñas por fecha (más recientes primero)
+    const combinedReviews = [
+      ...guide.reviews.map(review => ({
+        id: review.id,
+        rating: review.rating,
+        comment: review.comment,
+        reviewerName: review.users ? `${review.users.first_name || ''} ${review.users.last_name || ''}`.trim() : 'Anónimo',
+        createdAt: review.created_at,
+        source: 'marketplace'
+      })),
+      ...historyRatings.map(r => ({
+        id: r.id,
+        rating: r.guide_rating,
+        comment: r.comment,
+        reviewerName: r.users ? `${r.users.first_name || ''} ${r.users.last_name || ''}`.trim() : 'Anónimo',
+        createdAt: r.created_at,
+        source: 'history'
+      }))
+    ]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 10);
 
     // Formatear respuesta
     const data = {
@@ -303,22 +369,16 @@ const getGuideProfile = async (req, res) => {
       education: guide.education,
       pricePerPerson: guide.price_per_person ? parseFloat(guide.price_per_person) : null,
       guidePhoto: guide.guide_photo,
-      rating: guide.rating,
+      rating: combinedRating !== null ? combinedRating : guide.rating,
       online: guide.online,
-      reviewsCount: guide._count.reviews,
+      reviewsCount: totalReviewCount,
       toursCompleted: completedCount,
-      reviewCount: guide._count.reviews,
+      reviewCount: totalReviewCount,
       completedTours: completedCount,
       joinedDate: guide.created_at,
       verified: !!guide.license_number,
       workZones: guide.work_zones || [],
-      reviews: guide.reviews.map(review => ({
-        id: review.id,
-        rating: review.rating,
-        comment: review.comment,
-        reviewerName: review.users ? `${review.users.first_name || ''} ${review.users.last_name || ''}`.trim() : 'Anónimo',
-        createdAt: review.created_at
-      })),
+      reviews: combinedReviews,
       status: guide.users?.status,
       createdAt: guide.created_at,
       updatedAt: guide.updated_at
@@ -368,11 +428,13 @@ const getGuideReviews = async (req, res) => {
       });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = parseInt(page);
     const take = parseInt(limit);
 
-    // Obtener reviews con paginación
-    const [reviews, totalCount] = await Promise.all([
+    // Unimos reseñas del marketplace (`reviews`) y del historial de la
+    // agencia (`ratings` con guide_rating). Como vienen de tablas distintas,
+    // traemos todas, las ordenamos por fecha y paginamos en memoria.
+    const [marketplaceReviews, historyRatings] = await Promise.all([
       prisma.reviews.findMany({
         where: { guide_id: id },
         include: {
@@ -384,32 +446,65 @@ const getGuideReviews = async (req, res) => {
             }
           }
         },
-        orderBy: { created_at: 'desc' },
-        skip,
-        take
+        orderBy: { created_at: 'desc' }
       }),
-      prisma.reviews.count({ where: { guide_id: id } })
+      prisma.ratings.findMany({
+        where: {
+          reservations: { guide_id: id },
+          guide_rating: { not: null }
+        },
+        include: {
+          users: {
+            select: {
+              first_name: true,
+              last_name: true,
+              profile_photo: true
+            }
+          }
+        },
+        orderBy: { created_at: 'desc' }
+      })
     ]);
 
-    // Formatear respuesta para el frontend
-    const formattedReviews = reviews.map(review => ({
-      id: review.id,
-      rating: review.rating,
-      comment: review.comment || '',
-      verified: review.is_verified || false,
-      createdAt: review.created_at,
-      reviewerName: review.users
-        ? `${review.users.first_name || ''} ${review.users.last_name || ''}`.trim()
-        : 'Anónimo',
-      reviewerPhoto: review.users?.profile_photo
-    }));
+    const combined = [
+      ...marketplaceReviews.map(review => ({
+        id: review.id,
+        rating: review.rating,
+        comment: review.comment || '',
+        verified: review.is_verified || false,
+        createdAt: review.created_at,
+        reviewerName: review.users
+          ? `${review.users.first_name || ''} ${review.users.last_name || ''}`.trim()
+          : 'Anónimo',
+        reviewerPhoto: review.users?.profile_photo,
+        source: 'marketplace'
+      })),
+      ...historyRatings.map(r => ({
+        id: r.id,
+        rating: r.guide_rating,
+        comment: r.comment || '',
+        // Las calificaciones desde el historial provienen de reservas reales
+        // completadas, así que las marcamos como verificadas automáticamente.
+        verified: true,
+        createdAt: r.created_at,
+        reviewerName: r.users
+          ? `${r.users.first_name || ''} ${r.users.last_name || ''}`.trim()
+          : 'Anónimo',
+        reviewerPhoto: r.users?.profile_photo,
+        source: 'history'
+      }))
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const totalCount = combined.length;
+    const start = (pageNum - 1) * take;
+    const formattedReviews = combined.slice(start, start + take);
 
     res.json({
       success: true,
       data: {
         reviews: formattedReviews,
         pagination: {
-          page: parseInt(page),
+          page: pageNum,
           limit: take,
           total: totalCount,
           totalPages: Math.ceil(totalCount / take)
