@@ -820,6 +820,51 @@ const createReservation = async (req, res) => {
       return { reservation, createdGroups };
     });
 
+    // Si el admin auto-aprueba la reserva (status 'confirmed'), otorgar puntos a la agencia
+    // FUERA de la transacción para evitar que un error de puntos rompa la creación de la reserva.
+    // En caso de fallo, la reserva queda creada y confirmada; solo se pierde el otorgamiento
+    // de puntos, que puede recalcularse después.
+    if (isAdminCreator && initialStatus === 'confirmed' && agencyId) {
+      try {
+        const pointsConfig = await getPointsConfigFromDB();
+        const pointsToAward = Math.floor(totalAmount * pointsConfig.pointsPerSol);
+
+        if (pointsToAward > 0) {
+          await prisma.$transaction(async (tx) => {
+            const updatedAgency = await tx.agencies.update({
+              where: { id: agencyId },
+              data: {
+                available_points: { increment: pointsToAward },
+                total_points: { increment: pointsToAward }
+              }
+            });
+
+            await tx.reservations.update({
+              where: { id: result.reservation.id },
+              data: { points_awarded: pointsToAward }
+            });
+
+            await tx.points_history.create({
+              data: {
+                agency_id: agencyId,
+                type: 'earned',
+                amount: pointsToAward,
+                description: `Puntos por reserva confirmada #${result.reservation.id.substring(0, 8)} (creada por admin)`,
+                reference_type: 'reservation',
+                reference_id: result.reservation.id,
+                created_by: userId
+              }
+            });
+
+            await recalculateAgencyLevel(tx, agencyId, updatedAgency.total_points, pointsConfig.levels);
+          });
+        }
+      } catch (pointsError) {
+        // Log el error pero NO fallar la creación de la reserva.
+        console.error('Error otorgando puntos automaticamente en createReservation:', pointsError);
+      }
+    }
+
     const { reservation, createdGroups } = result;
 
     // Response
@@ -2189,6 +2234,7 @@ const duplicateReservation = async (req, res) => {
 
     // Duplicar por admin auto-aprueba, igual que createReservation
     const userRoleDup = req.user?.role;
+    const userIdDup = req.user?.id;
     const isAdminCreatorDup = userRoleDup === 'administrator' || userRoleDup === 'admin';
     const initialStatusDup = isAdminCreatorDup ? 'confirmed' : 'pending';
 
@@ -2211,7 +2257,8 @@ const duplicateReservation = async (req, res) => {
           billing_name: original.billing_name,
           billing_document: original.billing_document,
           billing_address: original.billing_address,
-          notes: `Duplicado de reservación ${id.substring(0, 8)}`
+          notes: `Duplicado de reservación ${id.substring(0, 8)}`,
+          created_by: userIdDup
         }
       });
 
@@ -2233,6 +2280,48 @@ const duplicateReservation = async (req, res) => {
 
       return newReservation;
     });
+
+    // Si el admin auto-aprueba la duplicación, otorgar puntos a la agencia FUERA de la
+    // transacción para no romper la duplicación en caso de fallo en el otorgamiento.
+    if (isAdminCreatorDup && initialStatusDup === 'confirmed' && original.agency_id) {
+      try {
+        const pointsConfig = await getPointsConfigFromDB();
+        const pointsToAward = Math.floor(parseFloat(original.total_amount) * pointsConfig.pointsPerSol);
+
+        if (pointsToAward > 0) {
+          await prisma.$transaction(async (tx) => {
+            const updatedAgency = await tx.agencies.update({
+              where: { id: original.agency_id },
+              data: {
+                available_points: { increment: pointsToAward },
+                total_points: { increment: pointsToAward }
+              }
+            });
+
+            await tx.reservations.update({
+              where: { id: result.id },
+              data: { points_awarded: pointsToAward }
+            });
+
+            await tx.points_history.create({
+              data: {
+                agency_id: original.agency_id,
+                type: 'earned',
+                amount: pointsToAward,
+                description: `Puntos por reserva confirmada #${result.id.substring(0, 8)} (duplicada por admin)`,
+                reference_type: 'reservation',
+                reference_id: result.id,
+                created_by: userIdDup
+              }
+            });
+
+            await recalculateAgencyLevel(tx, original.agency_id, updatedAgency.total_points, pointsConfig.levels);
+          });
+        }
+      } catch (pointsError) {
+        console.error('Error otorgando puntos automaticamente en duplicateReservation:', pointsError);
+      }
+    }
 
     return res.status(201).json({
       success: true,
