@@ -22,8 +22,6 @@ model active_tours {
   guides                guides?           @relation(fields: [guide_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__guide_id__guides")
   reservations          reservations      @relation(fields: [reservation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_active_tours__reservation_id__reservations")
   guide_locations       guide_locations[]
-  monitoring_alerts     monitoring_alerts[]
-  tour_incidents        tour_incidents[]
   tour_photos           tour_photos[]
   tour_progress         tour_progress[]
 
@@ -189,7 +187,7 @@ model emergency_categories {
 model emergency_contact_types {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String    @unique @db.VarChar(100)
-  icon        String?   @default("📞") @db.VarChar(50)
+  icon        String?   @default("ðŸ“ž") @db.VarChar(50)
   description String?
   color       String?   @default("#6B7280") @db.VarChar(20)
   priority    Int?      @default(1) @db.SmallInt
@@ -227,7 +225,7 @@ model emergency_materials {
   quantity                 Int?                       @default(1)
   unit                     String?                    @default("unidad") @db.VarChar(50)
   is_mandatory             Boolean?                   @default(false)
-  icon                     String?                    @default("📦") @db.VarChar(50)
+  icon                     String?                    @default("ðŸ“¦") @db.VarChar(50)
   notes                    String?
   is_active                Boolean?                   @default(true)
   created_at               DateTime?                  @default(now()) @db.Timestamptz(6)
@@ -558,7 +556,6 @@ model permissions {
   module           String             @db.VarChar(50)
   created_at       DateTime           @default(now()) @db.Timestamptz(6)
   role_permissions role_permissions[]
-  user_permissions user_permissions[]
 
   @@index([module], map: "idx_permissions__module")
 }
@@ -640,7 +637,7 @@ model protocols {
   created_at                         DateTime             @default(now()) @db.Timestamptz(6)
   updated_at                         DateTime             @default(now()) @db.Timestamptz(6)
   priority                           String?              @default("media") @db.VarChar(10)
-  icon                               String?              @default("🚨") @db.VarChar(10)
+  icon                               String?              @default("ðŸš¨") @db.VarChar(10)
   contacts                           String[]             @default([])
   material_ids                       String[]             @default([]) @db.Uuid
   active_tours                       active_tours[]
@@ -1122,7 +1119,6 @@ model tour_stops {
   duration      Int?
   description   String?
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
-  tour_incidents tour_incidents[]
   tour_photos   tour_photos[]
   tour_progress tour_progress[]
   tours         tours           @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_stops__tour_id__tours")
@@ -1241,7 +1237,6 @@ model users {
   feedback_feedback_user_idTousers       feedback[]              @relation("feedback_user_idTousers")
   guides                                 guides?
   messages                               messages[]
-  monitoring_alerts                      monitoring_alerts[]
   notification_settings                  notification_settings?
   notifications                          notifications[]
   points_history                         points_history[]
@@ -1256,12 +1251,9 @@ model users {
   staff_evaluations                      staff_evaluations[]
   suggestions                            suggestions[]
   tour_assignments                       tour_assignments[]
-  tour_incidents                         tour_incidents[]
   tour_photos                            tour_photos[]
   tourist_ratings                        tourist_ratings[]
   user_favorites                         user_favorites[]
-  user_permissions_user_permissions_user_idTousers    user_permissions[]      @relation("user_permissions_user_idTousers")
-  user_permissions_user_permissions_granted_byTousers user_permissions[]      @relation("user_permissions_granted_byTousers")
   user_terms_acceptance                  user_terms_acceptance[]
   roles                                  roles                   @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users__role_id__roles")
 
@@ -1490,59 +1482,4 @@ model time_slots {
   @@index([availability_id], map: "idx_time_slots__availability_id")
   @@index([reservation_id], map: "idx_time_slots__reservation_id")
   @@index([status], map: "idx_time_slots__status")
-}
-
-model tour_incidents {
-  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  active_tour_id String       @db.Uuid
-  tour_stop_id   String?      @db.Uuid
-  type           String       @db.VarChar(50)
-  severity       String       @default("medium") @db.VarChar(20)
-  description    String
-  reported_by    String?      @db.Uuid
-  latitude       Decimal?     @db.Decimal(10, 7)
-  longitude      Decimal?     @db.Decimal(10, 7)
-  created_at     DateTime     @default(now()) @db.Timestamptz(6)
-  active_tours   active_tours @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__active_tour_id__active_tours")
-  tour_stops     tour_stops?  @relation(fields: [tour_stop_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__tour_stop_id__tour_stops")
-  users          users?       @relation(fields: [reported_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_incidents__reported_by__users")
-
-  @@index([active_tour_id], map: "idx_tour_incidents__active_tour_id")
-  @@index([created_at], map: "idx_tour_incidents__created_at")
-  @@index([severity], map: "idx_tour_incidents__severity")
-  @@index([type], map: "idx_tour_incidents__type")
-}
-
-model monitoring_alerts {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  active_tour_id  String?       @db.Uuid
-  type            String        @db.VarChar(50)
-  severity        String        @default("medium") @db.VarChar(20)
-  message         String
-  acknowledged    Boolean       @default(false)
-  acknowledged_by String?       @db.Uuid
-  acknowledged_at DateTime?     @db.Timestamptz(6)
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  active_tours    active_tours? @relation(fields: [active_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_monitoring_alerts__active_tour_id__active_tours")
-  users           users?        @relation(fields: [acknowledged_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_monitoring_alerts__acknowledged_by__users")
-
-  @@index([acknowledged], map: "idx_monitoring_alerts__acknowledged")
-  @@index([active_tour_id], map: "idx_monitoring_alerts__active_tour_id")
-  @@index([created_at], map: "idx_monitoring_alerts__created_at")
-  @@index([severity], map: "idx_monitoring_alerts__severity")
-}
-
-model user_permissions {
-  id                                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                                  String      @db.Uuid
-  permission_id                            String      @db.Uuid
-  granted_at                               DateTime    @default(now()) @db.Timestamptz(6)
-  granted_by                               String?     @db.Uuid
-  permissions                              permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permissions__permission_id__permissions")
-  users_user_permissions_user_idTousers    users       @relation("user_permissions_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permissions__user_id__users")
-  users_user_permissions_granted_byTousers users?      @relation("user_permissions_granted_byTousers", fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_permissions__granted_by__users")
-
-  @@unique([user_id, permission_id], map: "user_permissions_unique")
-  @@index([permission_id], map: "idx_user_permissions__permission_id")
-  @@index([user_id], map: "idx_user_permissions__user_id")
 }

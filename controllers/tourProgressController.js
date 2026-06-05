@@ -441,112 +441,6 @@ const updateTourStopStatus = async (req, res) => {
 };
 
 /**
- * ReportTourIncident
- * POST /api/tours/:tourId/incidents
- * Reporta un incidente durante el tour
- * Roles permitidos: Guide
- */
-const reportTourIncident = async (req, res) => {
-  try {
-    // La ruta es /:id/incidents, por eso usamos req.params.id
-    const tourId = req.params.id;
-    const { type, severity, description, stopId, latitude, longitude } = req.body;
-    const userId = req.user?.id;
-
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(tourId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        message: 'tourId debe ser un UUID válido'
-      });
-    }
-
-    // Validar campos obligatorios
-    if (!type || !description) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        message: 'type y description son obligatorios'
-      });
-    }
-
-    // Verificar tour existe
-    const activeTour = await prisma.active_tours.findUnique({
-      where: { id: tourId }
-    });
-
-    if (!activeTour) {
-      return res.status(404).json({
-        success: false,
-        error: 'Not Found',
-        message: 'Tour activo no encontrado'
-      });
-    }
-
-    // Verificar si existe tabla tour_incidents
-    // Si no existe, usamos monitoring_alerts como alternativa
-    try {
-      const incident = await prisma.tour_incidents.create({
-        data: {
-          active_tour_id: tourId,
-          tour_stop_id: stopId || null,
-          type,
-          severity: severity || 'medium',
-          description,
-          reported_by: userId,
-          latitude: latitude ? parseFloat(latitude) : null,
-          longitude: longitude ? parseFloat(longitude) : null
-        }
-      });
-
-      return res.status(201).json({
-        success: true,
-        message: 'Incidente reportado',
-        data: {
-          id: incident.id,
-          type: incident.type,
-          severity: incident.severity,
-          createdAt: incident.created_at
-        }
-      });
-    } catch (prismaError) {
-      // Si la tabla no existe, crear alerta de monitoreo
-      if (prismaError.code === 'P2021' || prismaError.message.includes('does not exist')) {
-        const alert = await prisma.monitoring_alerts.create({
-          data: {
-            active_tour_id: tourId,
-            type: `incident_${type}`,
-            severity: severity || 'medium',
-            message: description,
-            acknowledged: false
-          }
-        });
-
-        return res.status(201).json({
-          success: true,
-          message: 'Incidente reportado como alerta',
-          data: {
-            id: alert.id,
-            type: alert.type,
-            severity: alert.severity,
-            createdAt: alert.created_at
-          }
-        });
-      }
-      throw prismaError;
-    }
-  } catch (error) {
-    console.error('Error en reportTourIncident:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: 'Error al reportar incidente'
-    });
-  }
-};
-
-/**
  * CompleteTour
  * POST /api/tours/:tourId/complete
  * Marca un tour activo como completado
@@ -668,6 +562,5 @@ module.exports = {
   checkInTourStop,
   checkOutTourStop,
   updateTourStopStatus,
-  reportTourIncident,
   completeTour
 };

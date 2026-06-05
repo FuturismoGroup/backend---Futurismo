@@ -6,8 +6,6 @@
 // API-025: DeleteUser - DELETE /api/users/:id
 // API-026: UpdateUserStatus - PATCH /api/users/:id/status
 // API-027: ResetUserPassword - POST /api/users/:id/reset-password
-// API-028: GetUserPermissions - GET /api/users/:id/permissions
-// API-029: UpdateUserPermissions - PUT /api/users/:id/permissions
 // API-030: GetUserStats - GET /api/users/stats
 // Fuente: 04_apis_lista.md lineas 1630-2285
 
@@ -1102,169 +1100,6 @@ const resetUserPassword = async (req, res) => {
 };
 
 /**
- * API-028: GetUserPermissions
- * GET /api/users/:id/permissions
- * Obtiene los permisos asignados a un usuario
- * Roles: Admin
- * Fuente: 04_apis_lista.md líneas 2121-2176
- */
-const getUserPermissions = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Validar UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'id debe ser un UUID válido'
-      });
-    }
-
-    // id debe existir (línea 2165)
-    const existingUser = await prisma.users.findUnique({
-      where: { id }
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Usuario no encontrado'
-      });
-    }
-
-    // Obtener todos los permisos
-    const allPermissions = await prisma.permissions.findMany({
-      orderBy: { module: 'asc' }
-    });
-
-    // Obtener permisos del usuario
-    const userPermissions = await prisma.user_permissions.findMany({
-      where: { user_id: id },
-      include: { permissions: true }
-    });
-
-    // Agrupar por módulo (línea 2167)
-    const permissionsByModule = {};
-    allPermissions.forEach(p => {
-      if (!permissionsByModule[p.module]) {
-        permissionsByModule[p.module] = [];
-      }
-      permissionsByModule[p.module].push({
-        id: p.id,
-        name: p.name,
-        description: p.description
-      });
-    });
-
-    // IDs de permisos seleccionados
-    const selectedPermissions = userPermissions.map(up => up.permission_id);
-
-    // Response según esquema UserPermissionsResponse (líneas 2151-2154)
-    return res.status(200).json({
-      userId: id,
-      permissionsByModule,
-      selectedPermissions
-    });
-
-  } catch (error) {
-    console.error('Error en getUserPermissions:', error);
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Error al obtener los permisos del usuario'
-    });
-  }
-};
-
-/**
- * API-029: UpdateUserPermissions
- * PUT /api/users/:id/permissions
- * Actualiza los permisos asignados a un usuario
- * Roles: Admin
- * Fuente: 04_apis_lista.md líneas 2177-2231
- */
-const updateUserPermissions = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { permissions } = req.body;
-
-    // Validar UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'id debe ser un UUID válido'
-      });
-    }
-
-    // id debe existir (línea 2219)
-    const existingUser = await prisma.users.findUnique({
-      where: { id }
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({
-        error: 'Not Found',
-        message: 'Usuario no encontrado'
-      });
-    }
-
-    // permissions debe ser array
-    if (!permissions || !Array.isArray(permissions)) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'permissions debe ser un array de IDs'
-      });
-    }
-
-    // Cada permission ID debe existir (línea 2220)
-    if (permissions.length > 0) {
-      const existingPermissions = await prisma.permissions.findMany({
-        where: { id: { in: permissions } }
-      });
-      if (existingPermissions.length !== permissions.length) {
-        return res.status(400).json({
-          error: 'Bad Request',
-          message: 'Algunos permission IDs no existen'
-        });
-      }
-    }
-
-    // Reemplaza permisos existentes completamente (línea 2222)
-    // Delete + Insert
-    await prisma.$transaction(async (tx) => {
-      // Eliminar permisos existentes
-      await tx.user_permissions.deleteMany({
-        where: { user_id: id }
-      });
-
-      // Insertar nuevos permisos
-      if (permissions.length > 0) {
-        await tx.user_permissions.createMany({
-          data: permissions.map(permissionId => ({
-            user_id: id,
-            permission_id: permissionId
-          }))
-        });
-      }
-    });
-
-    // Response según esquema UserPermissionsResponse (líneas 2206-2208)
-    return res.status(200).json({
-      userId: id,
-      updated: permissions.length
-    });
-
-  } catch (error) {
-    console.error('Error en updateUserPermissions:', error);
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Error al actualizar los permisos del usuario'
-    });
-  }
-};
-
-/**
  * ListRoles
  * GET /api/users/roles/list
  * Lista todos los roles disponibles en el sistema
@@ -1558,8 +1393,6 @@ module.exports = {
   deleteUser,
   updateUserStatus,
   resetUserPassword,
-  getUserPermissions,
-  updateUserPermissions,
   getUserStats,
   listRoles,
   restoreUser,

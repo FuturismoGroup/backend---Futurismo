@@ -350,19 +350,6 @@ router.patch(
 );
 
 /**
- * ReportTourIncident
- * POST /api/tours/:id/incidents
- * Reporta un incidente durante el tour
- * Roles permitidos: Guide
- */
-router.post(
-  '/:id/incidents',
-  authenticate,
-  authorize(['guide']),
-  tourProgressController.reportTourIncident
-);
-
-/**
  * CompleteTour
  * POST /api/tours/:id/complete
  * Marca un tour activo como completado

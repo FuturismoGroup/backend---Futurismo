@@ -140,30 +140,6 @@ router.post(
 );
 
 /**
- * API-028: GetUserPermissions
- * GET /api/users/:id/permissions
- * Roles permitidos: Admin
- */
-router.get(
-  '/:id/permissions',
-  authenticate,
-  authorize(['admin']),
-  userController.getUserPermissions
-);
-
-/**
- * API-029: UpdateUserPermissions
- * PUT /api/users/:id/permissions
- * Roles permitidos: Admin
- */
-router.put(
-  '/:id/permissions',
-  authenticate,
-  authorize(['admin']),
-  userController.updateUserPermissions
-);
-
-/**
  * RestoreUser
  * POST /api/users/:id/restore
  * Restaura un usuario eliminado (soft delete)

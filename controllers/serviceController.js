@@ -1,12 +1,12 @@
 // Controller de Services (provider_services)
 // Soporta ELM-052 (ProviderAssignment)
-// Tabla: provider_services
+// Tabla: provider_services (vinculada a provider_categories, NO a providers)
 
 const prisma = require('../config/db');
 
 /**
  * GET /api/services
- * Lista todos los servicios de proveedores
+ * Lista todos los servicios
  * Roles: Admin, Agency
  */
 const listServices = async (req, res) => {
@@ -14,7 +14,7 @@ const listServices = async (req, res) => {
     const {
       page = 1,
       pageSize = 100,
-      providerId,
+      categoryId,
       serviceType,
       isActive,
       search
@@ -23,27 +23,22 @@ const listServices = async (req, res) => {
     const pageNum = parseInt(page, 10);
     const pageSizeNum = parseInt(pageSize, 10);
 
-    // Construir filtros WHERE
     const where = {};
 
-    // Filtro por proveedor
-    if (providerId) {
-      where.provider_id = providerId;
+    if (categoryId) {
+      where.category_id = categoryId;
     }
 
-    // Filtro por tipo de servicio
     if (serviceType) {
       where.service_type = serviceType;
     }
 
-    // Filtro por estado activo (default: solo activos)
     if (isActive !== undefined) {
       where.is_active = isActive === 'true';
     } else {
       where.is_active = true;
     }
 
-    // Filtro de búsqueda
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -60,12 +55,8 @@ const listServices = async (req, res) => {
         take: pageSizeNum,
         orderBy: { name: 'asc' },
         include: {
-          providers: {
-            select: {
-              id: true,
-              name: true,
-              category_id: true
-            }
+          provider_categories: {
+            select: { id: true, name: true, color: true }
           }
         }
       }),
@@ -74,25 +65,21 @@ const listServices = async (req, res) => {
 
     const totalPages = Math.ceil(total / pageSizeNum);
 
-    // Mapear respuesta para frontend (ProviderAssignment espera estos campos)
     const items = services.map(service => ({
       id: service.id,
       name: service.name,
       description: service.description,
       serviceType: service.service_type,
       type: service.service_type,
-      price: service.price ? parseFloat(service.price) : null,
-      priceType: service.price_type,
-      currency: 'USD', // Default, podría venir del provider
-      duration: service.duration_minutes ? service.duration_minutes / 60 : null, // Convertir a horas
+      duration: service.duration_minutes ? service.duration_minutes / 60 : null,
       durationMinutes: service.duration_minutes,
       maxCapacity: service.max_capacity,
       isActive: service.is_active,
-      providerId: service.provider_id,
-      provider: service.providers ? {
-        id: service.providers.id,
-        name: service.providers.name,
-        categoryId: service.providers.category_id
+      categoryId: service.category_id,
+      category: service.provider_categories ? {
+        id: service.provider_categories.id,
+        name: service.provider_categories.name,
+        color: service.provider_categories.color
       } : null,
       createdAt: service.created_at
     }));
@@ -139,14 +126,8 @@ const getService = async (req, res) => {
     const service = await prisma.provider_services.findUnique({
       where: { id },
       include: {
-        providers: {
-          select: {
-            id: true,
-            name: true,
-            category_id: true,
-            phone: true,
-            email: true
-          }
+        provider_categories: {
+          select: { id: true, name: true, color: true, icon: true }
         }
       }
     });
@@ -166,20 +147,16 @@ const getService = async (req, res) => {
         name: service.name,
         description: service.description,
         serviceType: service.service_type,
-        price: service.price ? parseFloat(service.price) : null,
-        priceType: service.price_type,
-        currency: 'USD',
         duration: service.duration_minutes ? service.duration_minutes / 60 : null,
         durationMinutes: service.duration_minutes,
         maxCapacity: service.max_capacity,
         isActive: service.is_active,
-        providerId: service.provider_id,
-        provider: service.providers ? {
-          id: service.providers.id,
-          name: service.providers.name,
-          categoryId: service.providers.category_id,
-          phone: service.providers.phone,
-          email: service.providers.email
+        categoryId: service.category_id,
+        category: service.provider_categories ? {
+          id: service.provider_categories.id,
+          name: service.provider_categories.name,
+          color: service.provider_categories.color,
+          icon: service.provider_categories.icon
         } : null,
         createdAt: service.created_at
       }
@@ -197,52 +174,46 @@ const getService = async (req, res) => {
 
 /**
  * POST /api/services
- * Crear nuevo servicio
+ * Crear nuevo servicio (asociado a una categoría)
  * Roles: Admin
  */
 const createService = async (req, res) => {
   try {
     const {
-      providerId,
+      categoryId,
       name,
       description,
       serviceType,
-      price,
-      priceType = 'per_person',
       durationMinutes,
       maxCapacity
     } = req.body;
 
-    // Validaciones requeridas
-    if (!providerId || !name || !serviceType) {
+    if (!categoryId || !name || !serviceType) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'providerId, name y serviceType son requeridos'
+        message: 'categoryId, name y serviceType son requeridos'
       });
     }
 
-    // Verificar que el proveedor existe
-    const provider = await prisma.providers.findUnique({
-      where: { id: providerId }
+    const category = await prisma.provider_categories.findUnique({
+      where: { id: categoryId }
     });
 
-    if (!provider) {
+    if (!category) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
-        message: 'Proveedor no encontrado'
+        message: 'Categoría no encontrada'
       });
     }
 
     const service = await prisma.provider_services.create({
       data: {
-        provider_id: providerId,
+        category_id: categoryId,
         name,
         description,
         service_type: serviceType,
-        price: price ? parseFloat(price) : null,
-        price_type: priceType,
         duration_minutes: durationMinutes ? parseInt(durationMinutes, 10) : null,
         max_capacity: maxCapacity ? parseInt(maxCapacity, 10) : null,
         is_active: true
@@ -257,12 +228,10 @@ const createService = async (req, res) => {
         name: service.name,
         description: service.description,
         serviceType: service.service_type,
-        price: service.price ? parseFloat(service.price) : null,
-        priceType: service.price_type,
         durationMinutes: service.duration_minutes,
         maxCapacity: service.max_capacity,
         isActive: service.is_active,
-        providerId: service.provider_id
+        categoryId: service.category_id
       }
     });
 
@@ -304,15 +273,11 @@ const updateService = async (req, res) => {
       });
     }
 
-    // Preparar datos para actualizar
     const data = {};
     if (updateData.name) data.name = updateData.name;
     if (updateData.description !== undefined) data.description = updateData.description;
     if (updateData.serviceType) data.service_type = updateData.serviceType;
-    if (updateData.price !== undefined) {
-      data.price = updateData.price ? parseFloat(updateData.price) : null;
-    }
-    if (updateData.priceType) data.price_type = updateData.priceType;
+    if (updateData.categoryId) data.category_id = updateData.categoryId;
     if (updateData.durationMinutes !== undefined) {
       data.duration_minutes = updateData.durationMinutes ? parseInt(updateData.durationMinutes, 10) : null;
     }
@@ -334,12 +299,10 @@ const updateService = async (req, res) => {
         name: service.name,
         description: service.description,
         serviceType: service.service_type,
-        price: service.price ? parseFloat(service.price) : null,
-        priceType: service.price_type,
         durationMinutes: service.duration_minutes,
         maxCapacity: service.max_capacity,
         isActive: service.is_active,
-        providerId: service.provider_id
+        categoryId: service.category_id
       }
     });
 
@@ -380,7 +343,6 @@ const deleteService = async (req, res) => {
       });
     }
 
-    // Soft delete
     await prisma.provider_services.update({
       where: { id },
       data: { is_active: false }
@@ -418,7 +380,6 @@ const listServiceTypes = async (req, res) => {
       name: type.name,
       code: type.code,
       description: type.description,
-      icon: type.icon,
       color: type.color,
       isActive: type.is_active
     }));
@@ -439,26 +400,28 @@ const listServiceTypes = async (req, res) => {
 };
 
 /**
- * GET /api/services/by-provider/:providerId
- * Lista servicios de un proveedor específico
+ * GET /api/services/by-category/:categoryId
+ * Lista servicios de una categoría específica
+ * (reemplaza a by-provider/:providerId — la tabla provider_services
+ *  ahora se vincula a categoría, no a proveedor)
  * Roles: Admin, Agency
  */
-const listServicesByProvider = async (req, res) => {
+const listServicesByCategory = async (req, res) => {
   try {
-    const { providerId } = req.params;
+    const { categoryId } = req.params;
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(providerId)) {
+    if (!uuidRegex.test(categoryId)) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'providerId debe ser un UUID válido'
+        message: 'categoryId debe ser un UUID válido'
       });
     }
 
     const services = await prisma.provider_services.findMany({
       where: {
-        provider_id: providerId,
+        category_id: categoryId,
         is_active: true
       },
       orderBy: { name: 'asc' }
@@ -469,13 +432,11 @@ const listServicesByProvider = async (req, res) => {
       name: service.name,
       description: service.description,
       serviceType: service.service_type,
-      price: service.price ? parseFloat(service.price) : null,
-      priceType: service.price_type,
-      currency: 'USD',
       duration: service.duration_minutes ? service.duration_minutes / 60 : null,
       durationMinutes: service.duration_minutes,
       maxCapacity: service.max_capacity,
-      isActive: service.is_active
+      isActive: service.is_active,
+      categoryId: service.category_id
     }));
 
     return res.status(200).json({
@@ -484,11 +445,11 @@ const listServicesByProvider = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error en listServicesByProvider:', error);
+    console.error('Error en listServicesByCategory:', error);
     return res.status(500).json({
       success: false,
       error: 'Internal Server Error',
-      message: 'Error al obtener servicios del proveedor'
+      message: 'Error al obtener servicios de la categoría'
     });
   }
 };
@@ -507,12 +468,10 @@ const getServiceHistory = async (req, res) => {
 
     const where = {};
 
-    // Filtro por estado
     if (status && status !== 'all') {
       where.status = status;
     }
 
-    // Filtro por rango de fechas
     if (from || to) {
       where.service_date = {};
       if (from) {
@@ -523,9 +482,7 @@ const getServiceHistory = async (req, res) => {
       }
     }
 
-    // Filtro según rol
     if (userRole === 'guide' && userId) {
-      // Guía solo ve sus propios servicios
       const guide = await prisma.guides.findFirst({ where: { user_id: userId } });
       if (guide) {
         where.guide_id = guide.id;
@@ -559,7 +516,6 @@ const getServiceHistory = async (req, res) => {
     });
 
     const items = requests.map(r => {
-      // Construir nombre completo del guía
       const guideName = r.guides?.users
         ? `${r.guides.users.first_name} ${r.guides.users.last_name}`.trim()
         : null;
@@ -615,6 +571,6 @@ module.exports = {
   updateService,
   deleteService,
   listServiceTypes,
-  listServicesByProvider,
+  listServicesByCategory,
   getServiceHistory
 };

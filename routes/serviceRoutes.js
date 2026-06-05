@@ -35,15 +35,15 @@ router.get(
 );
 
 /**
- * GET /api/services/by-provider/:providerId
- * Lista servicios de un proveedor específico
+ * GET /api/services/by-category/:categoryId
+ * Lista servicios de una categoría específica
  * Roles permitidos: Admin, Agency
  */
 router.get(
-  '/by-provider/:providerId',
+  '/by-category/:categoryId',
   authenticate,
   authorize(['admin', 'agency']),
-  serviceController.listServicesByProvider
+  serviceController.listServicesByCategory
 );
 
 /**
