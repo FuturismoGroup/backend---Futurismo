@@ -88,33 +88,62 @@ const listProviders = async (req, res) => {
       prisma.providers.count({ where })
     ]);
 
+    // Cargar los servicios de las categorías presentes en esta página en una sola
+    // consulta y agruparlos por category_id. Los servicios están asociados a la
+    // CATEGORÍA (no al proveedor), por lo que todos los proveedores de la misma
+    // categoría comparten el mismo catálogo. Esto evita que ProviderCard oculte
+    // la sección de servicios al recargar la lista (cuando antes solo se enviaba
+    // servicesCount, sin el arreglo que la UI necesita para renderizar los chips).
+    const categoryIds = [...new Set(providers.map(p => p.category_id).filter(Boolean))];
+    const servicesByCategory = new Map();
+    if (categoryIds.length > 0) {
+      const allServices = await prisma.provider_services.findMany({
+        where: { category_id: { in: categoryIds }, is_active: true },
+        orderBy: { name: 'asc' }
+      });
+      for (const svc of allServices) {
+        if (!servicesByCategory.has(svc.category_id)) {
+          servicesByCategory.set(svc.category_id, []);
+        }
+        servicesByCategory.get(svc.category_id).push({
+          id: svc.id,
+          name: svc.name,
+          serviceType: svc.service_type
+        });
+      }
+    }
+
     // Mapear al formato esperado por el frontend
-    const data = providers.map(p => ({
-      id: p.id,
-      name: p.name,
-      // Campos para compatibilidad con frontend
-      category: p.category_id,
-      categoryName: p.provider_categories?.name,
-      categoryIcon: p.provider_categories?.icon,
-      categoryColor: p.provider_categories?.color,
-      location: p.location_id,
-      locationName: p.locations?.name,
-      // Contacto anidado (formato frontend)
-      contact: {
-        contactPerson: p.contact_name,
-        phone: p.phone,
-        email: p.email,
-        address: p.address
-      },
-      rating: p.rating ? parseFloat(p.rating) : null,
-      capacity: p.capacity,
-      description: p.description,
-      observations: p.observations,
-      status: p.status,
-      servicesCount: p.provider_categories?._count?.provider_services || 0,
-      createdAt: p.created_at,
-      updatedAt: p.updated_at
-    }));
+    const data = providers.map(p => {
+      const services = servicesByCategory.get(p.category_id) || [];
+      return {
+        id: p.id,
+        name: p.name,
+        // Campos para compatibilidad con frontend
+        category: p.category_id,
+        categoryName: p.provider_categories?.name,
+        categoryIcon: p.provider_categories?.icon,
+        categoryColor: p.provider_categories?.color,
+        location: p.location_id,
+        locationName: p.locations?.name,
+        // Contacto anidado (formato frontend)
+        contact: {
+          contactPerson: p.contact_name,
+          phone: p.phone,
+          email: p.email,
+          address: p.address
+        },
+        rating: p.rating ? parseFloat(p.rating) : null,
+        capacity: p.capacity,
+        description: p.description,
+        observations: p.observations,
+        status: p.status,
+        services,
+        servicesCount: p.provider_categories?._count?.provider_services || 0,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at
+      };
+    });
 
     res.json({
       success: true,

@@ -263,7 +263,7 @@ const createTour = async (req, res) => {
     // Validaciones (líneas 834-839)
 
     // name es requerido (línea 835)
-    if (!name || name.trim() === '') {
+    if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({
         error: 'Bad Request',
         message: 'name es requerido'
@@ -304,10 +304,17 @@ const createTour = async (req, res) => {
     // Si stops presente, cada stop debe tener name (línea 839)
     if (stops && Array.isArray(stops)) {
       for (let i = 0; i < stops.length; i++) {
-        if (!stops[i].name || stops[i].name.trim() === '') {
+        const stop = stops[i];
+        if (!stop || typeof stop !== 'object') {
           return res.status(400).json({
             error: 'Bad Request',
-            message: `Stop ${i + 1}: name es requerido`
+            message: `Parada ${i + 1}: datos inválidos`
+          });
+        }
+        if (!stop.name || typeof stop.name !== 'string' || stop.name.trim() === '') {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: `Parada ${i + 1}: el nombre es requerido`
           });
         }
       }
@@ -425,9 +432,12 @@ const createTour = async (req, res) => {
 
   } catch (error) {
     console.error('Error en createTour:', error);
+    const isDev = process.env.NODE_ENV !== 'production';
     return res.status(500).json({
       error: 'Internal Server Error',
-      message: 'Error al crear el tour'
+      message: isDev && error.message
+        ? `Error al crear el tour: ${error.message}`
+        : 'Error al crear el tour'
     });
   }
 };
@@ -489,7 +499,7 @@ const updateTour = async (req, res) => {
     // Validaciones (líneas 914-917)
 
     // name no vacío si se envía (línea 916)
-    if (name !== undefined && name.trim() === '') {
+    if (name !== undefined && (name === null || typeof name !== 'string' || name.trim() === '')) {
       return res.status(400).json({
         error: 'Bad Request',
         message: 'name no puede estar vacío'
@@ -510,6 +520,25 @@ const updateTour = async (req, res) => {
         error: 'Bad Request',
         message: 'duration debe ser > 0'
       });
+    }
+
+    // Validar paradas ANTES de iniciar la transacción para evitar crashes (línea 919)
+    if (stops !== undefined && Array.isArray(stops)) {
+      for (let i = 0; i < stops.length; i++) {
+        const stop = stops[i];
+        if (!stop || typeof stop !== 'object') {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: `Parada ${i + 1}: datos inválidos`
+          });
+        }
+        if (!stop.name || typeof stop.name !== 'string' || stop.name.trim() === '') {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: `Parada ${i + 1}: el nombre es requerido`
+          });
+        }
+      }
     }
 
     // Construir objeto de actualización con nombres snake_case (TBL-005)
@@ -613,9 +642,29 @@ const updateTour = async (req, res) => {
 
   } catch (error) {
     console.error('Error en updateTour:', error);
+
+    // Conflicto: paradas referenciadas por progress/fotos/incidentes activos
+    if (error.code === 'P2003' || /foreign key/i.test(error.message || '')) {
+      return res.status(409).json({
+        error: 'Conflict',
+        message: 'No se pueden modificar las paradas: existen registros activos (progreso de tour, fotos o incidentes) que las referencian.'
+      });
+    }
+
+    // Registro no encontrado durante la transacción
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'El tour ya no existe o fue eliminado.'
+      });
+    }
+
+    const isDev = process.env.NODE_ENV !== 'production';
     return res.status(500).json({
       error: 'Internal Server Error',
-      message: 'Error al actualizar el tour'
+      message: isDev && error.message
+        ? `Error al actualizar el tour: ${error.message}`
+        : 'Error al actualizar el tour'
     });
   }
 };

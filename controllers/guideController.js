@@ -2086,20 +2086,29 @@ const getCompleteAgenda = async (req, res) => {
           eventType: event.event_type,
           title: event.title,
           description: event.description,
-          // start_datetime/end_datetime son @db.Timestamptz: convertir a Lima
-          // para que el día y la hora coincidan con la zona del usuario,
-          // sin importar si el server corre en UTC (Railway) o local.
-          date: toLimaDateString(event.start_datetime),
-          startTime: toLimaTimeString(event.start_datetime),
-          endTime: toLimaTimeString(event.end_datetime),
+          // start_datetime/end_datetime son @db.Timestamptz, pero createPersonalEvent
+          // los almacena con `Date.UTC(año, mes, día, hh, mm)` — es decir, mete la
+          // hora ingresada por el usuario como UTC literal (la columna se usa como
+          // un contenedor wall-clock, no como un instante real). Por lo tanto, para
+          // devolver al frontend exactamente lo que el usuario escribió, hay que
+          // leer también con componentes UTC. Convertir a Lima acá restaría 5h y
+          // movía el día (ej.: evento de 03:00 → 22:00 del día anterior), que es
+          // justo el "desfase de 1 día" que aparecía en Mi Agenda en Railway. El
+          // resto de rutas (getPersonalEvents, create/update response) ya usan
+          // este mismo formato — esta era la única ruta inconsistente.
+          date: toUtcDateString(event.start_datetime),
+          startTime: toUtcTimeString(event.start_datetime),
+          endTime: toUtcTimeString(event.end_datetime),
           allDay: event.all_day,
           color: event.color,
           visibility: event.blocks_availability ? 'occupied' : 'private',
           source: 'personal'
         })),
       ...assignedTours.map(tour => {
-        // tour.date es @db.Date (sin tz): usar la parte ISO directamente.
-        // tour.time es @db.Time (sin tz): tomar la hora UTC tal cual viene.
+        // tour.date es @db.Date y tour.time es @db.Time (ambos sin tz). Prisma
+        // los hidrata como Date en UTC, así que las partes UTC son los valores
+        // crudos almacenados. NO usar conversión a Lima — restaría 5h y movía
+        // el día al anterior, igual que en personal_events.
         const timeStr = tour.time
           ? `${String(tour.time.getUTCHours()).padStart(2, '0')}:${String(tour.time.getUTCMinutes()).padStart(2, '0')}`
           : '09:00';
@@ -2109,7 +2118,7 @@ const getCompleteAgenda = async (req, res) => {
           eventType: 'company_tour',
           title: tour.tours?.name || 'Tour asignado',
           description: `${tour.participants} pasajeros`,
-          date: toLimaDateString(tour.date),
+          date: toUtcDateString(tour.date),
           startTime: timeStr,
           endTime: calculateEndTime(timeStr, tour.tours?.duration || 120),
           allDay: false,
@@ -2203,30 +2212,27 @@ function calculateEndTime(startTime, durationMinutes) {
 }
 
 // =============================================================================
-// HELPERS DE TIMEZONE
+// HELPERS DE FECHA/HORA — convención wall-clock-en-UTC
 // =============================================================================
-// La app opera en Lima (America/Lima, UTC-5). Railway corre en UTC, local puede
-// estar en otra tz. Estos helpers fuerzan el formato Lima en cualquier entorno.
-const LIMA_TZ = 'America/Lima';
-
-// Formato YYYY-MM-DD del Date en Lima (en-CA usa formato ISO en toLocaleDateString)
-function toLimaDateString(date) {
+// La app guarda fechas y horas de calendario como wall-clock literal en columnas
+// timestamptz/date/time (createPersonalEvent usa `new Date(Date.UTC(año, mes,
+// día, hh, mm))`, y los campos @db.Date/@db.Time los hidrata Prisma como Date
+// en UTC con los valores crudos). Por lo tanto, para reconstruir lo que el
+// usuario ingresó hay que leer SIEMPRE con componentes UTC, sin convertir a
+// ninguna zona local. Así el resultado es idéntico en local y en Railway (UTC).
+// NO usar Intl.DateTimeFormat con timeZone aquí: convertir a Lima restaría 5h
+// y movía días/horas, como pasaba antes con el "desfase de 1 día" en Mi Agenda.
+function toUtcDateString(date) {
   if (!date) return null;
   if (typeof date === 'string') {
-    // Si ya viene "YYYY-MM-DD" o "YYYY-MM-DDTHH:mm..." con la parte de fecha,
-    // confiar en esa porción solo si no trae info de timezone que valga la pena convertir.
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
     date = new Date(date);
   }
   if (isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: LIMA_TZ,
-    year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(date);
+  return date.toISOString().split('T')[0];
 }
 
-// Formato HH:mm del Date en Lima
-function toLimaTimeString(date) {
+function toUtcTimeString(date) {
   if (!date) return null;
   if (typeof date === 'string') {
     const m = date.match(/^(\d{1,2}):(\d{2})/);
@@ -2234,10 +2240,7 @@ function toLimaTimeString(date) {
     date = new Date(date);
   }
   if (isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: LIMA_TZ,
-    hour: '2-digit', minute: '2-digit', hour12: false
-  }).format(date);
+  return date.toISOString().split('T')[1].substring(0, 5);
 }
 
 /**
