@@ -4,6 +4,32 @@
 const prisma = require('../../config/db');
 
 /**
+ * Resuelve el agency_id asociado a un active_tour a través de su reservation.
+ * Se usa para enviar el broadcast SOLO a la agencia que tiene el servicio asignado,
+ * evitando filtrar ubicaciones GPS entre agencias.
+ *
+ * @param {string} activeTourId - ID del active_tour
+ * @returns {Promise<string|null>} agency_id o null si no se encuentra
+ */
+const getAgencyIdForActiveTour = async (activeTourId) => {
+  if (!activeTourId) return null;
+  try {
+    const activeTour = await prisma.active_tours.findUnique({
+      where: { id: activeTourId },
+      select: {
+        reservations: {
+          select: { agency_id: true }
+        }
+      }
+    });
+    return activeTour?.reservations?.agency_id || null;
+  } catch (err) {
+    console.error('[Monitoring] Error resolviendo agency_id:', err?.message);
+    return null;
+  }
+};
+
+/**
  * Registra los handlers de monitoreo para un socket
  * @param {Server} io - Instancia de Socket.io
  * @param {Socket} socket - Socket del cliente
@@ -12,15 +38,15 @@ const registerHandlers = (io, socket) => {
   const userId = socket.user.id;
   const userRole = socket.user.role;
 
-  // Auto-join: admins y agencias se unen a la room de monitoreo
+  // Auto-join: admins ven TODAS las ubicaciones (room global)
   if (userRole === 'admin' || userRole === 'administrator') {
     socket.join('monitoring:admin');
     console.log(`[Monitoring] Admin ${socket.user.firstName} unido a monitoring:admin`);
   }
 
+  // Agencias ven SOLO ubicaciones de guías asignados a sus servicios
+  // IMPORTANTE: NO unir a monitoring:admin para preservar la privacidad entre agencias
   if (userRole === 'agency') {
-    socket.join('monitoring:admin'); // Agencias tambien reciben updates
-    // Buscar agencyId para room especifica
     prisma.agencies.findUnique({ where: { user_id: userId } })
       .then(agency => {
         if (agency) {
@@ -58,15 +84,18 @@ const registerHandlers = (io, socket) => {
           return;
         }
 
-        // Buscar tour activo
+        // Buscar tour activo incluyendo la reservación para obtener agency_id
+        // (necesario para broadcast dirigido a la agencia correspondiente).
         let activeTour;
         if (reservationId) {
           activeTour = await prisma.active_tours.findUnique({
-            where: { reservation_id: reservationId }
+            where: { reservation_id: reservationId },
+            include: { reservations: { select: { agency_id: true } } }
           });
         } else {
           activeTour = await prisma.active_tours.findFirst({
-            where: { guide_id: guide.id, status: 'in_progress' }
+            where: { guide_id: guide.id, status: 'in_progress' },
+            include: { reservations: { select: { agency_id: true } } }
           });
         }
 
@@ -111,8 +140,18 @@ const registerHandlers = (io, socket) => {
           recordedAt: now.toISOString()
         };
 
-        // Broadcast a admins y agencias en la room de monitoreo
+        // Broadcast a admins (room global)
         io.to('monitoring:admin').emit('guide:location:updated', locationPayload);
+
+        // Broadcast SOLO a la agencia dueña del servicio (privacidad entre agencias)
+        const agencyId = activeTour.reservations?.agency_id;
+        if (agencyId) {
+          io.to(`monitoring:agency:${agencyId}`).emit('guide:location:updated', locationPayload);
+        }
+
+        // También emitir a la room específica del tour (admins/agencias suscritos
+        // al detalle de un servicio puntual via monitoring:tour:join).
+        io.to(`tour:${activeTour.id}`).emit('guide:location:updated', locationPayload);
 
         // Confirmar al guia
         socket.emit('guide:location:ack', {
@@ -154,28 +193,70 @@ const registerHandlers = (io, socket) => {
 };
 
 /**
- * Emite actualizacion de ubicacion desde el controller HTTP (fallback)
- * Se llama cuando el guia envia ubicacion via REST en vez de WebSocket
+ * Emite actualizacion de ubicacion desde el controller HTTP (fallback).
+ * Se llama cuando el guia envia ubicacion via REST en vez de WebSocket.
+ *
+ * Envia a:
+ *   - monitoring:admin (todos los admins ven todo)
+ *   - monitoring:agency:<agencyId> (SOLO la agencia que tiene el servicio)
+ *   - tour:<activeTourId> (suscriptores del detalle de tour específico)
+ *
+ * Si locationData incluye agencyId lo usa directo; si no, resuelve buscando
+ * la reservación del activeTourId. Esto evita filtrar ubicaciones GPS entre
+ * agencias distintas.
+ *
  * @param {Server} io - Instancia de Socket.io
- * @param {Object} locationData - Datos de ubicacion
+ * @param {Object} locationData - Datos de ubicacion (incluye activeTourId)
  */
-const emitLocationUpdate = (io, locationData) => {
+const emitLocationUpdate = async (io, locationData) => {
   if (!io || !locationData) return;
+
+  // Siempre emitir a admins
   io.to('monitoring:admin').emit('guide:location:updated', locationData);
+
+  // Resolver agency_id si no viene en el payload
+  let agencyId = locationData.agencyId;
+  if (!agencyId && locationData.activeTourId) {
+    agencyId = await getAgencyIdForActiveTour(locationData.activeTourId);
+  }
+
+  if (agencyId) {
+    io.to(`monitoring:agency:${agencyId}`).emit('guide:location:updated', locationData);
+  }
+
+  // Emitir también a la room específica del tour (admins/agencias en detalle)
+  if (locationData.activeTourId) {
+    io.to(`tour:${locationData.activeTourId}`).emit('guide:location:updated', locationData);
+  }
 };
 
 /**
- * Emite que un tour cambio de estado (inicio, completado, etc)
+ * Emite que un tour cambio de estado (inicio, completado, etc).
+ * Notifica a admins y a la agencia dueña del servicio.
+ *
  * @param {Server} io - Instancia de Socket.io
- * @param {Object} tourData - Datos del tour
+ * @param {Object} tourData - Datos del tour (debe incluir activeTourId o agencyId)
  */
-const emitTourStatusChange = (io, tourData) => {
+const emitTourStatusChange = async (io, tourData) => {
   if (!io || !tourData) return;
+
+  // Siempre emitir a admins
   io.to('monitoring:admin').emit('monitoring:tour:status', tourData);
+
+  // Resolver agency_id si no viene en el payload
+  let agencyId = tourData.agencyId;
+  if (!agencyId && tourData.activeTourId) {
+    agencyId = await getAgencyIdForActiveTour(tourData.activeTourId);
+  }
+
+  if (agencyId) {
+    io.to(`monitoring:agency:${agencyId}`).emit('monitoring:tour:status', tourData);
+  }
 };
 
 module.exports = {
   registerHandlers,
   emitLocationUpdate,
-  emitTourStatusChange
+  emitTourStatusChange,
+  getAgencyIdForActiveTour
 };

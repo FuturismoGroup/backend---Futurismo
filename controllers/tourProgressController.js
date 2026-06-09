@@ -3,6 +3,7 @@
 // Tablas: active_tours, tour_progress, tour_stops
 
 const prisma = require('../config/db');
+const { resolveTourView, resolveTourStops } = require('../utils/tourSnapshot');
 
 /**
  * GetTourProgress
@@ -62,9 +63,11 @@ const getTourProgress = async (req, res) => {
       });
     }
 
-    // Combinar paradas con progreso
-    const tour = activeTour.reservations?.tours;
-    const stops = tour?.tour_stops || [];
+    // Combinar paradas con progreso. Si la reserva tiene snapshot, esas paradas
+    // (congeladas al momento de la edición) son las que el guía debe recorrer.
+    const reservation = activeTour.reservations;
+    const tourView = resolveTourView(reservation);
+    const stops = resolveTourStops(reservation);
     const progressMap = new Map(
       activeTour.tour_progress.map(p => [p.tour_stop_id, p])
     );
@@ -104,7 +107,7 @@ const getTourProgress = async (req, res) => {
       success: true,
       data: {
         id: activeTour.id,
-        tourName: tour?.name,
+        tourName: tourView?.name,
         status: activeTour.status,
         startedAt: activeTour.started_at,
         guide: activeTour.guides ? {

@@ -793,6 +793,7 @@ model reservations {
   created_by           String?                @db.Uuid
   created_at           DateTime               @default(now()) @db.Timestamptz(6)
   updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  tour_snapshot        Json?
   active_tours         active_tours?
   chats                chats[]
   expenses             expenses[]
@@ -1119,6 +1120,7 @@ model tour_stops {
   duration      Int?
   description   String?
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  replaced_at   DateTime?       @db.Timestamptz(6)
   tour_photos   tour_photos[]
   tour_progress tour_progress[]
   tours         tours           @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tour_stops__tour_id__tours")

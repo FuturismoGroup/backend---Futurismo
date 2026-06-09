@@ -7,6 +7,8 @@
 // Fuente: 04_apis_lista.md lineas 619-985
 
 const prisma = require('../config/db');
+const { Prisma } = require('@prisma/client');
+const { resolveTourView } = require('../utils/tourSnapshot');
 
 /**
  * API-008: ListTours
@@ -94,7 +96,9 @@ const listTours = async (req, res) => {
         orderBy: { created_at: 'desc' },
         include: {
           _count: {
-            select: { tour_stops: true }
+            select: {
+              tour_stops: { where: { replaced_at: null } }
+            }
           }
         }
       }),
@@ -169,11 +173,15 @@ const getTour = async (req, res) => {
     }
 
     // Buscar tour con paradas ordenadas por order_num (línea 779)
+    // Solo se devuelven paradas vigentes (replaced_at IS NULL). Las paradas
+    // marcadas como reemplazadas se mantienen en BD para que tour_progress
+    // y tour_photos históricas sigan funcionando, pero no se exponen aquí.
     // Tabla: TBL-005 (tours), TBL-006 (tour_stops)
     const tour = await prisma.tours.findUnique({
       where: { id },
       include: {
         tour_stops: {
+          where: { replaced_at: null },
           orderBy: { order_num: 'asc' }
         }
       }
@@ -389,6 +397,7 @@ const createTour = async (req, res) => {
         where: { id: tour.id },
         include: {
           tour_stops: {
+            where: { replaced_at: null },
             orderBy: { order_num: 'asc' }
           }
         }
@@ -564,22 +573,81 @@ const updateTour = async (req, res) => {
     if (active !== undefined) updateData.active = active;
 
     // Transacción atómica (línea 930)
-    // Tabla: TBL-005 (tours), TBL-006 (tour_stops)
+    // Tabla: TBL-005 (tours), TBL-006 (tour_stops), TBL-001 (reservations)
+    //
+    // Edición NO retroactiva: antes de modificar el tour, se congela un snapshot
+    // del estado actual en cada reserva existente que aún no lo tenga. Las
+    // reservas (pendientes, confirmadas, en progreso, completadas, canceladas)
+    // conservan así el tour tal y como estaba cuando se creó la reserva.
+    //
+    // tour_stops: en vez de borrar (que rompe FK con tour_progress/tour_photos),
+    // las paradas vigentes se marcan con replaced_at y se insertan las nuevas.
     const result = await prisma.$transaction(async (tx) => {
+      // Snapshot del tour ANTES de aplicar cambios.
+      // Incluye paradas activas en su orden actual para que la reserva pueda
+      // reproducir el itinerario original aunque se rediseñe el tour.
+      const previousStops = await tx.tour_stops.findMany({
+        where: { tour_id: id, replaced_at: null },
+        orderBy: { order_num: 'asc' }
+      });
+
+      const snapshotData = {
+        id: existingTour.id,
+        code: existingTour.code,
+        name: existingTour.name,
+        description: existingTour.description,
+        shortDescription: existingTour.short_description,
+        category: existingTour.category,
+        tourType: existingTour.tour_type,
+        duration: existingTour.duration,
+        price: existingTour.price?.toString() || null,
+        childPrice: existingTour.child_price?.toString() || null,
+        maxCapacity: existingTour.max_capacity,
+        includesGuide: existingTour.includes_guide,
+        includesTransport: existingTour.includes_transport,
+        meetingPoint: existingTour.meeting_point,
+        languages: existingTour.languages,
+        image: existingTour.image,
+        includes: existingTour.includes,
+        excludes: existingTour.excludes,
+        notes: existingTour.notes,
+        active: existingTour.active,
+        stops: previousStops.map(stop => ({
+          id: stop.id,
+          name: stop.name,
+          description: stop.description,
+          duration: stop.duration,
+          order: stop.order_num
+        })),
+        snapshotAt: new Date().toISOString()
+      };
+
+      // Backfill: copiar snapshot a todas las reservas existentes (de cualquier
+      // estado) que aún no lo tengan congelado. Reservas posteriores a esta
+      // edición seguirán viendo el tour actualizado por JOIN.
+      await tx.reservations.updateMany({
+        where: {
+          tour_id: id,
+          tour_snapshot: { equals: Prisma.AnyNull }
+        },
+        data: { tour_snapshot: snapshotData }
+      });
+
       // Actualizar tour
       await tx.tours.update({
         where: { id },
         data: updateData
       });
 
-      // Paradas se reemplazan completamente (delete + insert) (línea 919)
+      // Paradas: soft-delete + insert para preservar FK histórica
       if (stops !== undefined && Array.isArray(stops)) {
-        // Eliminar paradas antiguas
-        await tx.tour_stops.deleteMany({
-          where: { tour_id: id }
+        // Marcar las paradas vigentes como reemplazadas (no se borran)
+        await tx.tour_stops.updateMany({
+          where: { tour_id: id, replaced_at: null },
+          data: { replaced_at: new Date() }
         });
 
-        // Crear nuevas paradas
+        // Crear nuevas paradas vigentes
         if (stops.length > 0) {
           const stopsData = stops.map((stop, index) => ({
             tour_id: id,
@@ -595,11 +663,12 @@ const updateTour = async (req, res) => {
         }
       }
 
-      // Obtener tour actualizado con paradas
+      // Obtener tour actualizado con paradas vigentes
       const updatedTour = await tx.tours.findUnique({
         where: { id },
         include: {
           tour_stops: {
+            where: { replaced_at: null },
             orderBy: { order_num: 'asc' }
           }
         }
@@ -642,14 +711,6 @@ const updateTour = async (req, res) => {
 
   } catch (error) {
     console.error('Error en updateTour:', error);
-
-    // Conflicto: paradas referenciadas por progress/fotos/incidentes activos
-    if (error.code === 'P2003' || /foreign key/i.test(error.message || '')) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message: 'No se pueden modificar las paradas: existen registros activos (progreso de tour, fotos o incidentes) que las referencian.'
-      });
-    }
 
     // Registro no encontrado durante la transacción
     if (error.code === 'P2025') {
@@ -870,7 +931,10 @@ const duplicateTour = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const original = await prisma.tours.findUnique({ where: { id }, include: { tour_stops: true } });
+    const original = await prisma.tours.findUnique({
+      where: { id },
+      include: { tour_stops: { where: { replaced_at: null }, orderBy: { order_num: 'asc' } } }
+    });
     if (!original) {
       return res.status(404).json({ error: 'Not Found', message: 'Tour no encontrado' });
     }
@@ -1238,26 +1302,36 @@ const getGuideTours = async (req, res) => {
       });
     }
 
-    const reservationItems = reservations.map(r => ({
-      reservationId: r.id,
-      tour: r.tours,
-      date: r.date ? r.date.toISOString().split('T')[0] : null,
-      time: r.time ? r.time.toISOString().substring(11, 16) : null,
-      participants: r.participants,
-      status: r.status,
-      agency: r.agencies,
-      pickupLocation: r.pickup_location || null,
-      location: r.pickup_location || r.tours?.meeting_point || r.meeting_point || '',
-      activeTour: r.active_tours || null,
-      source: 'reservation',
-      groups: (r.reservation_groups || []).map(g => ({
-        id: g.id,
-        representativeName: g.representative_name,
-        representativePhone: g.representative_phone,
-        adultsCount: g.adults_count,
-        childrenCount: g.children_count
-      }))
-    }));
+    const reservationItems = reservations.map(r => {
+      // Vista de tour respetando snapshot (reservas editadas conservan plantilla original)
+      const tourView = resolveTourView(r);
+      const tourPayload = tourView ? {
+        id: tourView.id,
+        name: tourView.name,
+        duration: tourView.duration,
+        meeting_point: tourView.meetingPoint
+      } : null;
+      return {
+        reservationId: r.id,
+        tour: tourPayload,
+        date: r.date ? r.date.toISOString().split('T')[0] : null,
+        time: r.time ? r.time.toISOString().substring(11, 16) : null,
+        participants: r.participants,
+        status: r.status,
+        agency: r.agencies,
+        pickupLocation: r.pickup_location || null,
+        location: r.pickup_location || tourPayload?.meeting_point || r.meeting_point || '',
+        activeTour: r.active_tours || null,
+        source: 'reservation',
+        groups: (r.reservation_groups || []).map(g => ({
+          id: g.id,
+          representativeName: g.representative_name,
+          representativePhone: g.representative_phone,
+          adultsCount: g.adults_count,
+          childrenCount: g.children_count
+        }))
+      };
+    });
 
     // Mapear service_requests al mismo shape que reservations para que el
     // frontend de "Mis Tours" los liste igual que los tours formales.
@@ -1780,7 +1854,9 @@ const generateAssignmentPDF = async (req, res) => {
     }
 
     const assignment = reservation.tour_assignments;
-    const tour = reservation.tours;
+    // Si la reserva tiene snapshot, el PDF de asignación debe reflejar la
+    // versión del tour vigente al momento de la reserva (no la edición posterior).
+    const tourView = resolveTourView(reservation);
     const agency = reservation.agencies;
     const guide = assignment?.guides || reservation.guides;
     const driver = assignment?.drivers;
@@ -1802,15 +1878,15 @@ const generateAssignmentPDF = async (req, res) => {
         notes: assignment?.notes || reservation.notes,
         status: reservation.status
       },
-      tour: tour ? {
-        id: tour.id,
-        code: tour.code,
-        name: tour.name,
-        duration: tour.duration,
-        meetingPoint: tour.meeting_point,
-        category: tour.category,
-        includesGuide: tour.includes_guide,
-        includesTransport: tour.includes_transport
+      tour: tourView ? {
+        id: tourView.id,
+        code: tourView.code,
+        name: tourView.name,
+        duration: tourView.duration,
+        meetingPoint: tourView.meetingPoint,
+        category: tourView.category,
+        includesGuide: tourView.includesGuide,
+        includesTransport: tourView.includesTransport
       } : null,
       agency: agency ? {
         id: agency.id,
@@ -1949,6 +2025,7 @@ const getPendingAssignments = async (req, res) => {
     const items = filteredReservations.map(r => {
       const a = r.tour_assignments;
       const isComplete = a && a.guide_id && a.driver_id && a.vehicle_id;
+      const tourView = resolveTourView(r);
 
       return {
         id: r.id,
@@ -1960,7 +2037,13 @@ const getPendingAssignments = async (req, res) => {
         children: r.children,
         status: r.status,
         pickupLocation: a?.pickup_location || r.pickup_location,
-        tour: r.tours,
+        tour: tourView ? {
+          id: tourView.id,
+          code: tourView.code,
+          name: tourView.name,
+          duration: tourView.duration,
+          category: tourView.category
+        } : null,
         agency: r.agencies ? { id: r.agencies.id, name: r.agencies.business_name } : null,
         assignmentStatus: isComplete ? 'complete' : 'pending',
         assignment: a ? {

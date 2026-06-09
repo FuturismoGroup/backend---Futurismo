@@ -8,6 +8,52 @@ const prisma = require('../config/db');
 // Tipos de pago válidos
 const VALID_TYPES = ['credit_card', 'debit_card', 'bank_transfer', 'cash', 'yape', 'plin'];
 
+// Límites de longitud por campo (deben coincidir con schema.prisma: system_payment_methods)
+const FIELD_LIMITS = {
+  type: 30,
+  label: 100,
+  bank: 100,
+  accountNumber: 30,
+  cci: 25,
+  cardNumber: 20,
+  phoneNumber: 20,
+  holderName: 200,
+  currency: 3,
+  accountType: 20,
+  cardType: 20,
+  expiryDate: 10
+};
+
+// Etiquetas legibles para mensajes de error
+const FIELD_LABELS = {
+  type: 'Tipo de método',
+  label: 'Etiqueta',
+  bank: 'Entidad bancaria',
+  accountNumber: 'Número de cuenta',
+  cci: 'CCI',
+  cardNumber: 'Número de tarjeta',
+  phoneNumber: 'Número de teléfono',
+  holderName: 'Titular',
+  currency: 'Moneda',
+  accountType: 'Tipo de cuenta',
+  cardType: 'Tipo de tarjeta',
+  expiryDate: 'Fecha de expiración'
+};
+
+/**
+ * Validar la longitud de cada campo según los límites de la BD
+ */
+const validateFieldLengths = (data) => {
+  const errors = [];
+  for (const [field, max] of Object.entries(FIELD_LIMITS)) {
+    const value = data[field];
+    if (typeof value === 'string' && value.length > max) {
+      errors.push(`${FIELD_LABELS[field]} excede el máximo de ${max} caracteres`);
+    }
+  }
+  return errors;
+};
+
 /**
  * Mapear campos de BD (snake_case) a respuesta API (camelCase)
  */
@@ -127,6 +173,15 @@ const createSystemPaymentMethod = async (req, res) => {
       });
     }
 
+    // Validar longitudes para evitar errores P2000 de Prisma/Postgres
+    const lengthErrors = validateFieldLengths(req.body);
+    if (lengthErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: lengthErrors.join('. ')
+      });
+    }
+
     // Si es main, desactivar el flag en los demás
     if (isMain) {
       await prisma.system_payment_methods.updateMany({
@@ -169,6 +224,13 @@ const createSystemPaymentMethod = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al crear método de pago del sistema:', error);
+    // Prisma P2000: el valor proporcionado excede la longitud de columna
+    if (error?.code === 'P2000') {
+      return res.status(400).json({
+        success: false,
+        error: `Uno de los campos excede la longitud permitida${error.meta?.column_name ? ` (${error.meta.column_name})` : ''}`
+      });
+    }
     return res.status(500).json({
       success: false,
       error: 'Error interno del servidor'
@@ -222,6 +284,15 @@ const updateSystemPaymentMethod = async (req, res) => {
       });
     }
 
+    // Validar longitudes en update (solo campos enviados)
+    const lengthErrors = validateFieldLengths(req.body);
+    if (lengthErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: lengthErrors.join('. ')
+      });
+    }
+
     // Si se marca como main, desactivar los demás
     if (isMain === true) {
       await prisma.system_payment_methods.updateMany({
@@ -266,6 +337,12 @@ const updateSystemPaymentMethod = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al actualizar método de pago del sistema:', error);
+    if (error?.code === 'P2000') {
+      return res.status(400).json({
+        success: false,
+        error: `Uno de los campos excede la longitud permitida${error.meta?.column_name ? ` (${error.meta.column_name})` : ''}`
+      });
+    }
     return res.status(500).json({
       success: false,
       error: 'Error interno del servidor'

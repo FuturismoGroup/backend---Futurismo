@@ -3,6 +3,7 @@
 // API-088 a API-090: Monitoreo de tours en tiempo real
 
 const prisma = require('../config/db');
+const { resolveTourView, resolveTourStops } = require('../utils/tourSnapshot');
 
 /**
  * API-088: GetActiveToursMonitoring
@@ -144,6 +145,12 @@ const getActiveToursMonitoring = async (req, res) => {
 
     // Procesar datos de monitoreo con información completa
     const data = activeReservations.map(r => {
+      // Para reservas con snapshot, mostrar el tour tal y como estaba al
+      // momento de la reserva (evita que un edit posterior altere la vista
+      // del monitoreo de tours ya en curso).
+      const tourView = resolveTourView(r);
+      const tourStopsForReservation = resolveTourStops(r);
+
       const now = new Date();
       // Combinar fecha y hora para obtener startTime
       const dateStr = r.date instanceof Date ? r.date.toISOString().split('T')[0] : r.date;
@@ -155,11 +162,11 @@ const getActiveToursMonitoring = async (req, res) => {
         ? new Date(r.active_tours.started_at)
         : scheduledStartTime;
 
-      const duration = r.tours?.duration || 240; // minutos
+      const duration = tourView?.duration || 240; // minutos
       const endTime = new Date(actualStartTime.getTime() + duration * 60000);
 
       // Calcular progreso REAL basado en paradas completadas
-      const totalStops = r.tours?.tour_stops?.length || 0;
+      const totalStops = tourStopsForReservation.length;
       const tourProgress = r.active_tours?.tour_progress || [];
       const completedStops = tourProgress.filter(tp =>
         tp.status === 'completed'
@@ -231,7 +238,7 @@ const getActiveToursMonitoring = async (req, res) => {
 
       return {
         reservationId: r.id,
-        tourName: r.tours?.name || 'Tour no especificado',
+        tourName: tourView?.name || 'Tour no especificado',
         guideId: r.guides?.id || null,
         guideName,
         guidePhone: r.guides?.users?.phone || null,
@@ -330,9 +337,10 @@ const updateGuideLocation = async (req, res) => {
     let activeTour;
 
     if (reservationId) {
-      // Buscar tour específico por reservación
+      // Buscar tour específico por reservación (incluyendo agency_id para broadcast)
       activeTour = await prisma.active_tours.findUnique({
-        where: { reservation_id: reservationId }
+        where: { reservation_id: reservationId },
+        include: { reservations: { select: { agency_id: true } } }
       });
 
       if (!activeTour) {
@@ -350,12 +358,13 @@ const updateGuideLocation = async (req, res) => {
         });
       }
     } else {
-      // Buscar cualquier tour activo del guía
+      // Buscar cualquier tour activo del guía (incluyendo agency_id para broadcast)
       activeTour = await prisma.active_tours.findFirst({
         where: {
           guide_id: guide.id,
           status: 'in_progress'
-        }
+        },
+        include: { reservations: { select: { agency_id: true } } }
       });
 
       if (!activeTour) {
@@ -400,11 +409,14 @@ const updateGuideLocation = async (req, res) => {
         where: { id: req.user.id },
         select: { first_name: true, last_name: true }
       });
+      // Incluir agencyId para que el broadcast llegue SOLO a la agencia
+      // dueña del servicio (privacidad entre agencias).
       emitLocationUpdate(io, {
         guideId: guide.id,
         guideName: guideUser ? `${guideUser.first_name} ${guideUser.last_name}` : 'Guía',
         activeTourId: activeTour.id,
         reservationId: activeTour.reservation_id,
+        agencyId: activeTour.reservations?.agency_id || null,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         accuracy: safeAccuracy,

@@ -5,6 +5,7 @@
 const prisma = require('../config/db');
 const { parseLocalDate, formatLocalDate, isDateTodayOrFuture } = require('../utils/dateUtils');
 const { validatePaymentMethod } = require('../utils/paymentMethodValidator');
+const { resolveTourView, resolveTourStops } = require('../utils/tourSnapshot');
 const { getPointsConfigFromDB, recalculateAgencyLevel } = require('./pointsController');
 
 /**
@@ -302,14 +303,17 @@ const listReservations = async (req, res) => {
       notes: reservation.notes,
       createdAt: reservation.created_at,
       updatedAt: reservation.updated_at,
-      tour: reservation.tours ? {
-        id: reservation.tours.id,
-        name: reservation.tours.name,
-        tourType: reservation.tours.tour_type,
-        duration: reservation.tours.duration,
-        price: reservation.tours.price,
-        image: reservation.tours.image
-      } : null,
+      tour: (() => {
+        const view = resolveTourView(reservation);
+        return view ? {
+          id: view.id,
+          name: view.name,
+          tourType: view.tourType,
+          duration: view.duration,
+          price: view.price,
+          image: view.image
+        } : null;
+      })(),
       guide: reservation.guides ? {
         id: reservation.guides.id,
         firstName: reservation.guides.users?.first_name,
@@ -496,26 +500,27 @@ const getReservation = async (req, res) => {
     }
     // Admin puede ver todas - no hay restricciÃ³n adicional
 
-    // Construir response
+    // Construir response (preferir snapshot si la reserva ya tiene uno congelado)
+    const tourView = resolveTourView(reservation);
     const response = {
       id: reservation.id,
-      tour: reservation.tours ? {
-        id: reservation.tours.id,
-        name: reservation.tours.name,
-        description: reservation.tours.description,
-        shortDescription: reservation.tours.short_description,
-        category: reservation.tours.category,
-        tourType: reservation.tours.tour_type,
-        duration: reservation.tours.duration,
-        price: reservation.tours.price,
-        childPrice: reservation.tours.child_price,
-        maxCapacity: reservation.tours.max_capacity,
-        includesGuide: reservation.tours.includes_guide,
-        includesTransport: reservation.tours.includes_transport,
-        meetingPoint: reservation.tours.meeting_point,
-        languages: reservation.tours.languages,
-        image: reservation.tours.image,
-        active: reservation.tours.active
+      tour: tourView ? {
+        id: tourView.id,
+        name: tourView.name,
+        description: tourView.description,
+        shortDescription: tourView.shortDescription,
+        category: tourView.category,
+        tourType: tourView.tourType,
+        duration: tourView.duration,
+        price: tourView.price,
+        childPrice: tourView.childPrice,
+        maxCapacity: tourView.maxCapacity,
+        includesGuide: tourView.includesGuide,
+        includesTransport: tourView.includesTransport,
+        meetingPoint: tourView.meetingPoint,
+        languages: tourView.languages,
+        image: tourView.image,
+        active: tourView.active
       } : null,
       guide: reservation.guides ? {
         id: reservation.guides.id,
@@ -895,15 +900,18 @@ const createReservation = async (req, res) => {
         adultsCount: g.adults_count,
         childrenCount: g.children_count
       })),
-      tour: reservation.tours ? {
-        id: reservation.tours.id,
-        name: reservation.tours.name,
-        tourType: reservation.tours.tour_type,
-        duration: reservation.tours.duration,
-        price: reservation.tours.price,
-        childPrice: reservation.tours.child_price,
-        image: reservation.tours.image
-      } : null,
+      tour: (() => {
+        const view = resolveTourView(reservation);
+        return view ? {
+          id: view.id,
+          name: view.name,
+          tourType: view.tourType,
+          duration: view.duration,
+          price: view.price,
+          childPrice: view.childPrice,
+          image: view.image
+        } : null;
+      })(),
       agency: reservation.agencies ? {
         id: reservation.agencies.id,
         businessName: reservation.agencies.business_name,
@@ -1218,15 +1226,18 @@ const updateReservation = async (req, res) => {
       })),
       createdAt: updatedReservation.created_at,
       updatedAt: updatedReservation.updated_at,
-      tour: updatedReservation.tours ? {
-        id: updatedReservation.tours.id,
-        name: updatedReservation.tours.name,
-        tourType: updatedReservation.tours.tour_type,
-        duration: updatedReservation.tours.duration,
-        price: updatedReservation.tours.price,
-        childPrice: updatedReservation.tours.child_price,
-        image: updatedReservation.tours.image
-      } : null,
+      tour: (() => {
+        const view = resolveTourView(updatedReservation);
+        return view ? {
+          id: view.id,
+          name: view.name,
+          tourType: view.tourType,
+          duration: view.duration,
+          price: view.price,
+          childPrice: view.childPrice,
+          image: view.image
+        } : null;
+      })(),
       guide: updatedReservation.guides ? {
         id: updatedReservation.guides.id,
         firstName: updatedReservation.guides.users?.first_name,
@@ -2178,11 +2189,14 @@ const getVoucher = async (req, res) => {
           childrenCount: g.children_count
         }))
       },
-      tour: reservation.tours ? {
-        name: reservation.tours.name,
-        duration: reservation.tours.duration,
-        meetingPoint: reservation.tours.meeting_point
-      } : null,
+      tour: (() => {
+        const view = resolveTourView(reservation);
+        return view ? {
+          name: view.name,
+          duration: view.duration,
+          meetingPoint: view.meetingPoint
+        } : null;
+      })(),
       billingName: reservation.billing_name,
       guide: reservation.guides ? {
         name: `${reservation.guides.users?.first_name} ${reservation.guides.users?.last_name}`.trim()
@@ -2485,7 +2499,9 @@ const getExecutionHistory = async (req, res) => {
       });
     }
 
-    // Obtener la reservación con su tour activo
+    // Obtener la reservación con su tour activo. tour_stops sin filtro de
+    // replaced_at porque puede haber progreso/fotos histórica apuntando a
+    // paradas reemplazadas; el snapshot (si existe) tiene prioridad.
     const reservation = await prisma.reservations.findUnique({
       where: { id },
       include: {
@@ -2554,7 +2570,9 @@ const getExecutionHistory = async (req, res) => {
     }
 
     const activeTour = reservation.active_tours;
-    const tourStops = reservation.tours?.tour_stops || [];
+    // Si la reserva tiene snapshot, sus paradas son la versión congelada del
+    // tour; si no, usamos las paradas vigentes del tour (replaced_at IS NULL).
+    const tourStops = resolveTourStops(reservation);
 
     // Construir timeline de ejecución
     let executionTimeline = [];
@@ -2678,11 +2696,14 @@ const getExecutionHistory = async (req, res) => {
           status: reservation.status,
           participants: reservation.participants
         },
-        tour: {
-          id: reservation.tours?.id,
-          name: reservation.tours?.name,
-          duration: reservation.tours?.duration
-        },
+        tour: (() => {
+          const view = resolveTourView(reservation);
+          return view ? {
+            id: view.id,
+            name: view.name,
+            duration: view.duration
+          } : null;
+        })(),
         guide: reservation.guides ? {
           id: reservation.guides.id,
           name: `${reservation.guides.users?.first_name || ''} ${reservation.guides.users?.last_name || ''}`.trim()
