@@ -16,11 +16,12 @@ const systemPaymentMethodController = require('../controllers/systemPaymentMetho
 /**
  * GET /api/system/payment-methods
  * Listar todos los métodos de pago del sistema
+ * Accesible por admin y agency (las agencias necesitan verlos para pagar la reserva).
  */
 router.get(
   '/payment-methods',
   authenticate,
-  authorize(['admin', 'administrator']),
+  authorize(['admin', 'administrator', 'agency']),
   systemPaymentMethodController.listSystemPaymentMethods
 );
 
