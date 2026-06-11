@@ -44,12 +44,16 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 /**
  * Valida si un metodo de pago es valido.
  *
- * Acepta dos formatos:
+ * Acepta tres formatos:
  *   1) un codigo global de payment_methods (cash, yape, bank_transfer, ...)
  *   2) un UUID de agency_payment_methods. En ese caso resuelve a su `type`
  *      (que es un codigo global) para guardar un valor consistente en
  *      reservations.payment_method. Sin esto, las reservas fallan apenas la
  *      agencia configura un metodo de pago propio.
+ *   3) un UUID de system_payment_methods (cuentas propias de Futurismo Tours).
+ *      Es lo que envia el wizard de reservas, que lista /system/payment-methods.
+ *      Tambien resuelve a su `type`. Sin esto, las reservas fallan apenas el
+ *      admin elige uno de los metodos de pago del sistema.
  *
  * @param {string} paymentMethod
  * @param {string} [agencyId] - opcional, requerido para validar UUIDs
@@ -67,8 +71,9 @@ const validatePaymentMethod = async (paymentMethod, agencyId = null) => {
     return { valid: true, validMethods, useDefault: false, resolvedMethod: paymentMethod };
   }
 
-  // Si parece UUID, intentar resolverlo contra los metodos de pago de la agencia
+  // Si parece UUID, intentar resolverlo contra los metodos de pago propios.
   if (UUID_REGEX.test(paymentMethod)) {
+    // 1) Metodos de pago de la agencia (agency_payment_methods).
     try {
       const where = { id: paymentMethod, is_active: true };
       if (agencyId) where.agency_id = agencyId;
@@ -77,11 +82,24 @@ const validatePaymentMethod = async (paymentMethod, agencyId = null) => {
         select: { id: true, type: true, agency_id: true }
       });
       if (agencyMethod && (!agencyId || agencyMethod.agency_id === agencyId)) {
-        const resolved = validMethods.includes(agencyMethod.type) ? agencyMethod.type : agencyMethod.type;
-        return { valid: true, validMethods, useDefault: false, resolvedMethod: resolved };
+        return { valid: true, validMethods, useDefault: false, resolvedMethod: agencyMethod.type };
       }
     } catch (error) {
       console.error('Error resolviendo agency_payment_method:', error);
+    }
+
+    // 2) Metodos de pago del sistema (system_payment_methods). Es lo que envia
+    //    el wizard de reservas, que lista /system/payment-methods.
+    try {
+      const systemMethod = await prisma.system_payment_methods.findFirst({
+        where: { id: paymentMethod, is_active: true },
+        select: { type: true }
+      });
+      if (systemMethod) {
+        return { valid: true, validMethods, useDefault: false, resolvedMethod: systemMethod.type };
+      }
+    } catch (error) {
+      console.error('Error resolviendo system_payment_method:', error);
     }
   }
 
