@@ -7,6 +7,7 @@ const { parseLocalDate, formatLocalDate, isDateTodayOrFuture } = require('../uti
 const { validatePaymentMethod } = require('../utils/paymentMethodValidator');
 const { resolveTourView, resolveTourStops } = require('../utils/tourSnapshot');
 const { getPointsConfigFromDB, recalculateAgencyLevel } = require('./pointsController');
+const { notifyUser, notifyAdmins, getAgencyUserId, getGuideUserId } = require('../utils/notify');
 
 /**
  * API-001: ListReservations
@@ -872,6 +873,38 @@ const createReservation = async (req, res) => {
 
     const { reservation, createdGroups } = result;
 
+    // --- Notificaciones (best-effort: nunca deben romper la creacion de la reserva) ---
+    try {
+      const io = req.app.get('io');
+      const shortId = reservation.id.substring(0, 8);
+      const tourName = tour.name;
+      const agencyUserId = await getAgencyUserId(reservation.agency_id);
+
+      // Confirmacion a la agencia duena de la reserva
+      await notifyUser(io, agencyUserId, {
+        type: 'reservation',
+        title: 'Reserva registrada',
+        message: `Tu reserva para "${tourName}" (#${shortId}) fue registrada correctamente.`,
+        actionUrl: '/reservations',
+        referenceType: 'reservation',
+        referenceId: reservation.id
+      });
+
+      // Aviso a administradores cuando la crea una agencia (no cuando la crea un admin)
+      if (!isAdminCreator) {
+        await notifyAdmins(io, {
+          type: 'reservation',
+          title: 'Nueva reserva',
+          message: `Nueva reserva para "${tourName}" (#${shortId}) pendiente de confirmacion.`,
+          actionUrl: '/admin/reservations-list',
+          referenceType: 'reservation',
+          referenceId: reservation.id
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error enviando notificaciones de createReservation:', notifyErr.message);
+    }
+
     // Response
     return res.status(201).json({
       id: reservation.id,
@@ -1535,6 +1568,48 @@ const updateReservationStatus = async (req, res) => {
       return { ...updatedReservation, points_awarded: pointsAwarded };
     });
 
+    // --- Notificaciones de cambio de estado (best-effort) ---
+    try {
+      const io = req.app.get('io');
+      const shortId = id.substring(0, 8);
+      const tourName = existingReservation.tours?.name || 'el tour';
+      const agencyUserId = await getAgencyUserId(existingReservation.agency_id);
+      const isCancellation = status === 'cancelled';
+      const statusLabels = {
+        confirmed: 'confirmada',
+        in_progress: 'en progreso',
+        completed: 'completada',
+        cancelled: 'cancelada'
+      };
+      const label = statusLabels[status] || status;
+
+      // Notificar a la agencia duena de la reserva
+      await notifyUser(io, agencyUserId, {
+        type: isCancellation ? 'reservation_cancelled' : 'reservation_status',
+        title: isCancellation ? 'Reserva cancelada' : 'Estado de reserva actualizado',
+        message: isCancellation
+          ? `Tu reserva para "${tourName}" (#${shortId}) fue cancelada.${cancellationReason ? ` Motivo: ${cancellationReason}` : ''}`
+          : `Tu reserva para "${tourName}" (#${shortId}) ahora esta ${label}.`,
+        actionUrl: '/reservations',
+        referenceType: 'reservation',
+        referenceId: id
+      });
+
+      // Si la cancela una agencia, avisar a los administradores
+      if (isCancellation && req.user?.role === 'agency') {
+        await notifyAdmins(io, {
+          type: 'reservation_cancelled',
+          title: 'Reserva cancelada por agencia',
+          message: `La reserva "${tourName}" (#${shortId}) fue cancelada por la agencia.`,
+          actionUrl: '/admin/reservations-list',
+          referenceType: 'reservation',
+          referenceId: id
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error enviando notificaciones de updateReservationStatus:', notifyErr.message);
+    }
+
     // Response según esquema ReservationStatusResult (líneas 426-432)
     return res.status(200).json({
       id: result.id,
@@ -1776,6 +1851,25 @@ const assignGuideToReservation = async (req, res) => {
       }
     });
 
+    // Notificar al guia asignado (solo cuando se asigna, no al desasignar) (best-effort)
+    if (guideId) {
+      try {
+        const io = req.app.get('io');
+        const guideUserId = await getGuideUserId(guideId);
+        const tourName = updatedReservation.tours?.name || 'un tour';
+        await notifyUser(io, guideUserId, {
+          type: 'tour_assigned',
+          title: 'Nuevo tour asignado',
+          message: `Se te asigno el tour "${tourName}" (reserva #${id.substring(0, 8)}).`,
+          actionUrl: '/agenda',
+          referenceType: 'reservation',
+          referenceId: id
+        });
+      } catch (notifyErr) {
+        console.error('Error notificando assignGuideToReservation:', notifyErr.message);
+      }
+    }
+
     return res.status(200).json({
       id: updatedReservation.id,
       guideId: updatedReservation.guide_id,
@@ -1861,6 +1955,8 @@ const bulkUpdateReservationStatus = async (req, res) => {
       success: [],
       failed: []
     };
+    // Datos para notificar a las agencias afectadas tras completar la transaccion
+    const notifyTargets = [];
 
     // Reglas de transiciÃ³n de estado
     const allowedTransitions = {
@@ -1971,6 +2067,15 @@ const bulkUpdateReservationStatus = async (req, res) => {
             pointsAwarded: pointsAwarded || 0
           });
 
+          // Recolectar destino de notificacion (la agencia duena de la reserva)
+          if (reservation.agency_id) {
+            notifyTargets.push({
+              agencyId: reservation.agency_id,
+              tourName: reservation.tours?.name || 'el tour',
+              reservationId
+            });
+          }
+
         } catch (error) {
           results.failed.push({
             id: reservationId,
@@ -1979,6 +2084,34 @@ const bulkUpdateReservationStatus = async (req, res) => {
         }
       }
     });
+
+    // Notificar a las agencias afectadas tras completar la transaccion (best-effort)
+    try {
+      const io = req.app.get('io');
+      const statusLabels = {
+        confirmed: 'confirmada',
+        in_progress: 'en progreso',
+        completed: 'completada',
+        cancelled: 'cancelada'
+      };
+      const label = statusLabels[newStatus] || newStatus;
+      const isCancellation = newStatus === 'cancelled';
+      for (const target of notifyTargets) {
+        const agencyUserId = await getAgencyUserId(target.agencyId);
+        await notifyUser(io, agencyUserId, {
+          type: isCancellation ? 'reservation_cancelled' : 'reservation_status',
+          title: isCancellation ? 'Reserva cancelada' : 'Estado de reserva actualizado',
+          message: isCancellation
+            ? `Tu reserva para "${target.tourName}" (#${target.reservationId.substring(0, 8)}) fue cancelada.${reason ? ` Motivo: ${reason}` : ''}`
+            : `Tu reserva para "${target.tourName}" (#${target.reservationId.substring(0, 8)}) ahora esta ${label}.`,
+          actionUrl: '/reservations',
+          referenceType: 'reservation',
+          referenceId: target.reservationId
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error notificando bulkUpdateReservationStatus:', notifyErr.message);
+    }
 
     // Response
     return res.status(200).json({

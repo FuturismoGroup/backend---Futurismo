@@ -19,7 +19,8 @@ const createTourSchema = Joi.object({
     }),
   description: Joi.string()
     .max(2000)
-    .optional(),
+    .optional()
+    .allow('', null),
   shortDescription: Joi.string()
     .max(300)
     .optional(),
@@ -105,7 +106,7 @@ const updateTourSchema = Joi.object({
   description: Joi.string()
     .max(2000)
     .optional()
-    .allow(''),
+    .allow('', null),
   shortDescription: Joi.string()
     .max(300)
     .optional()

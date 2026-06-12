@@ -5,6 +5,7 @@
 const prisma = require('../config/db');
 const { uploadRewardImageToStorage } = require('../middlewares/uploadReward');
 const { deleteObject, extractKeyFromUrl } = require('../utils/wasabiStorage');
+const { notifyUser, notifyAdmins, getAgencyUserId } = require('../utils/notify');
 
 // Niveles por defecto (fallback si no hay config en BD)
 const DEFAULT_LEVELS = [
@@ -482,6 +483,34 @@ const redeemReward = async (req, res) => {
 
       return { redemption, newBalance: updatedAgency.available_points };
     });
+
+    // --- Notificaciones del canje (best-effort: no deben romper el canje) ---
+    try {
+      const io = req.app.get('io');
+      const agencyUserId = await getAgencyUserId(agencyId);
+
+      // Confirmacion a la agencia que canjeo
+      await notifyUser(io, agencyUserId, {
+        type: 'reward_redeemed',
+        title: 'Canje realizado',
+        message: `Canjeaste "${reward.name}" por ${totalCost} puntos. Estado: pendiente de aprobacion.`,
+        actionUrl: '/agency/rewards',
+        referenceType: 'redemption',
+        referenceId: result.redemption.id
+      });
+
+      // Aviso a administradores para que aprueben/entreguen el canje
+      await notifyAdmins(io, {
+        type: 'reward_redeemed',
+        title: 'Nuevo canje de premio',
+        message: `${agency.business_name || 'Una agencia'} canjeo "${reward.name}" (${totalCost} pts).`,
+        actionUrl: '/admin/rewards',
+        referenceType: 'redemption',
+        referenceId: result.redemption.id
+      });
+    } catch (notifyErr) {
+      console.error('Error enviando notificaciones de redeemReward:', notifyErr.message);
+    }
 
     res.status(201).json({
       redemptionId: result.redemption.id,
@@ -1122,6 +1151,29 @@ const updateRedemptionStatus = async (req, res) => {
         agencies: { select: { business_name: true } }
       }
     });
+
+    // --- Notificacion a la agencia sobre el cambio de estado del canje (best-effort) ---
+    try {
+      const io = req.app.get('io');
+      const agencyUserId = await getAgencyUserId(existingRedemption.agency_id);
+      const rewardName = updatedRedemption.rewards?.name || existingRedemption.rewards?.name || 'tu premio';
+      const statusMsg = {
+        approved: `Tu canje de "${rewardName}" fue aprobado.`,
+        delivered: `Tu canje de "${rewardName}" fue entregado.`,
+        cancelled: `Tu canje de "${rewardName}" fue cancelado y se devolvieron tus puntos.`,
+        pending: `El estado de tu canje de "${rewardName}" cambio a pendiente.`
+      };
+      await notifyUser(io, agencyUserId, {
+        type: 'redemption_status',
+        title: 'Actualizacion de canje',
+        message: statusMsg[status] || `El estado de tu canje cambio a ${status}.`,
+        actionUrl: '/agency/rewards',
+        referenceType: 'redemption',
+        referenceId: id
+      });
+    } catch (notifyErr) {
+      console.error('Error enviando notificacion de updateRedemptionStatus:', notifyErr.message);
+    }
 
     res.json({
       success: true,

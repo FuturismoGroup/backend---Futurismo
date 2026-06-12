@@ -4,8 +4,28 @@
 
 const prisma = require('../config/db');
 const { checkGuideAvailabilityForDate } = require('../utils/guideAvailability');
+const { notifyUser, getGuideUserId } = require('../utils/notify');
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Formatea una fecha a YYYY-MM-DD de forma segura para los mensajes de notificacion.
+const fmtDate = (d) => {
+  try {
+    return new Date(d).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+};
+
+// Obtiene un nombre legible de la agencia desde el objeto incluido.
+const agencyDisplayName = (agencies) =>
+  agencies?.business_name
+  || (agencies?.users ? `${agencies.users.first_name} ${agencies.users.last_name}`.trim() : '')
+  || 'Una agencia';
+
+// Obtiene un nombre legible del guia desde el objeto incluido.
+const guideDisplayName = (guides) =>
+  guides?.users ? `${guides.users.first_name} ${guides.users.last_name}`.trim() : 'El guia';
 
 /** Mensajes legibles por reason de indisponibilidad */
 const AVAILABILITY_MESSAGES = {
@@ -119,6 +139,21 @@ const createServiceRequest = async (req, res) => {
         }
       }
     });
+
+    // Notificar al guia que recibio una nueva solicitud (best-effort)
+    try {
+      const io = req.app.get('io');
+      await notifyUser(io, serviceRequest.guides?.user_id, {
+        type: 'marketplace_request',
+        title: 'Nueva solicitud de servicio',
+        message: `${agencyDisplayName(serviceRequest.agencies)} te solicito un servicio para el ${fmtDate(serviceRequest.service_date)}.`,
+        actionUrl: '/marketplace/guide-dashboard',
+        referenceType: 'service_request',
+        referenceId: serviceRequest.id
+      });
+    } catch (notifyErr) {
+      console.error('Error notificando createServiceRequest:', notifyErr.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -352,6 +387,21 @@ const respondToServiceRequest = async (req, res) => {
         return updated;
       });
 
+      // Notificar a la agencia que el guia ACEPTO (best-effort)
+      try {
+        const io = req.app.get('io');
+        await notifyUser(io, result.agencies?.user_id, {
+          type: 'marketplace_response',
+          title: 'Solicitud aceptada',
+          message: `${guideDisplayName(result.guides)} acepto tu solicitud de servicio para el ${fmtDate(result.service_date)}.`,
+          actionUrl: `/marketplace/requests/${result.id}`,
+          referenceType: 'service_request',
+          referenceId: result.id
+        });
+      } catch (notifyErr) {
+        console.error('Error notificando aceptacion de solicitud:', notifyErr.message);
+      }
+
       res.json({
         success: true,
         message: 'Solicitud aceptada exitosamente',
@@ -376,6 +426,21 @@ const respondToServiceRequest = async (req, res) => {
           reviews: true
         }
       });
+
+      // Notificar a la agencia que el guia RECHAZO (best-effort)
+      try {
+        const io = req.app.get('io');
+        await notifyUser(io, updated.agencies?.user_id, {
+          type: 'marketplace_response',
+          title: 'Solicitud rechazada',
+          message: `${guideDisplayName(updated.guides)} rechazo tu solicitud de servicio para el ${fmtDate(updated.service_date)}.`,
+          actionUrl: `/marketplace/requests/${updated.id}`,
+          referenceType: 'service_request',
+          referenceId: updated.id
+        });
+      } catch (notifyErr) {
+        console.error('Error notificando rechazo de solicitud:', notifyErr.message);
+      }
 
       res.json({
         success: true,
@@ -442,6 +507,21 @@ const cancelServiceRequest = async (req, res) => {
         reviews: true
       }
     });
+
+    // Notificar al guia que la solicitud fue cancelada (best-effort)
+    try {
+      const io = req.app.get('io');
+      await notifyUser(io, updated?.guides?.user_id, {
+        type: 'marketplace_cancelled',
+        title: 'Solicitud cancelada',
+        message: `${agencyDisplayName(updated?.agencies)} cancelo la solicitud de servicio del ${fmtDate(updated?.service_date)}.`,
+        actionUrl: '/marketplace/guide-dashboard',
+        referenceType: 'service_request',
+        referenceId: id
+      });
+    } catch (notifyErr) {
+      console.error('Error notificando cancelacion de solicitud:', notifyErr.message);
+    }
 
     res.json({
       success: true,
@@ -551,6 +631,31 @@ const completeServiceRequest = async (req, res) => {
       return completedRequest;
     });
 
+    // Notificar a guia y agencia que el servicio fue completado (best-effort)
+    try {
+      const io = req.app.get('io');
+      // Al guia: confirmacion + ingreso registrado
+      await notifyUser(io, updated?.guides?.user_id, {
+        type: 'marketplace_completed',
+        title: 'Servicio completado',
+        message: `El servicio para ${agencyDisplayName(updated?.agencies)} del ${fmtDate(updated?.service_date)} se marco como completado.`,
+        actionUrl: '/marketplace/guide-dashboard',
+        referenceType: 'service_request',
+        referenceId: id
+      });
+      // A la agencia: ya puede reseñar al guia
+      await notifyUser(io, updated?.agencies?.user_id, {
+        type: 'marketplace_completed',
+        title: 'Servicio completado',
+        message: `El servicio con ${guideDisplayName(updated?.guides)} se completo. Ya puedes dejar tu reseña.`,
+        actionUrl: `/marketplace/review/${id}`,
+        referenceType: 'service_request',
+        referenceId: id
+      });
+    } catch (notifyErr) {
+      console.error('Error notificando complecion de servicio:', notifyErr.message);
+    }
+
     res.json({
       success: true,
       message: 'Servicio marcado como completado',
@@ -648,6 +753,22 @@ const createReview = async (req, res) => {
 
       return review;
     });
+
+    // Notificar al guia que recibio una nueva reseña (best-effort)
+    try {
+      const io = req.app.get('io');
+      const guideUserId = await getGuideUserId(result.guide_id);
+      await notifyUser(io, guideUserId, {
+        type: 'marketplace_review',
+        title: 'Nueva reseña recibida',
+        message: `Recibiste una reseña de ${result.rating} estrella${result.rating === 1 ? '' : 's'} por un servicio del marketplace.`,
+        actionUrl: '/marketplace/guide-dashboard',
+        referenceType: 'review',
+        referenceId: result.id
+      });
+    } catch (notifyErr) {
+      console.error('Error notificando nueva reseña:', notifyErr.message);
+    }
 
     res.status(201).json({
       success: true,

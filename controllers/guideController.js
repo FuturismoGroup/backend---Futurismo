@@ -8,6 +8,7 @@
 // Fuente: 04_apis_lista.md lineas 986-1627
 
 const prisma = require('../config/db');
+const { notifyUser } = require('../utils/notify');
 
 /**
  * API-013: ListGuides
@@ -830,6 +831,22 @@ const assignTourToGuide = async (req, res) => {
         ? `${assignment.guides.users.first_name} ${assignment.guides.users.last_name}`.trim()
         : null;
 
+      // Notificar al guia que se le asigno (o reasigno) un tour (best-effort)
+      try {
+        const io = req.app.get('io');
+        const tourName = assignment.reservations?.tours?.name || 'un tour';
+        await notifyUser(io, guide.user_id, {
+          type: 'tour_assigned',
+          title: existingAssignment ? 'Tour reasignado' : 'Nuevo tour asignado',
+          message: `Se te asigno el tour "${tourName}" para el ${date}${time ? ` a las ${time}` : ''}.`,
+          actionUrl: '/agenda',
+          referenceType: 'reservation',
+          referenceId: reservationId
+        });
+      } catch (notifyErr) {
+        console.error('Error notificando asignacion de tour (reserva):', notifyErr.message);
+      }
+
       return res.status(200).json({
         success: true,
         message: existingAssignment ? 'Guía reasignado a la reserva' : 'Guía asignado a la reserva',
@@ -881,6 +898,21 @@ const assignTourToGuide = async (req, res) => {
         blocks_availability: true
       }
     });
+
+    // Notificar al guia que se le asigno un tour (agenda independiente, best-effort)
+    try {
+      const io = req.app.get('io');
+      await notifyUser(io, guide.user_id, {
+        type: 'tour_assigned',
+        title: 'Nuevo tour asignado',
+        message: `Se te asigno "${title || 'un tour'}" para el ${date}${time ? ` a las ${time}` : ''}.`,
+        actionUrl: '/agenda',
+        referenceType: 'personal_event',
+        referenceId: personalEvent.id
+      });
+    } catch (notifyErr) {
+      console.error('Error notificando asignacion de tour (evento):', notifyErr.message);
+    }
 
     return res.status(201).json({
       success: true,
